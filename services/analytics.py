@@ -234,3 +234,342 @@ def get_product_response_crosstab(company=None):
         responses.add(r.company_response)
 
     return {'products': products, 'responses': sorted(responses)}
+
+
+# ── Client Details tab functions ──────────────────────────────────────────
+
+
+def get_monthly_trend_by_product(company, months=12):
+    """Monthly complaint counts broken down by product for a specific company."""
+    q = db.session.query(
+        func.strftime('%Y-%m', Complaint.date_received).label('month'),
+        Complaint.product,
+        func.count().label('count')
+    ).filter(Complaint.company == company)
+
+    q = q.group_by('month', Complaint.product).order_by('month')
+    results = q.all()
+
+    # Trim to requested number of months
+    months_seen = sorted(set(r.month for r in results))
+    if months and len(months_seen) > months:
+        cutoff = months_seen[-months]
+        results = [r for r in results if r.month >= cutoff]
+
+    return [{'month': r.month, 'product': r.product, 'count': r.count} for r in results]
+
+
+def get_monthly_trend_by_response(company, months=12):
+    """Monthly counts broken down by company_response type."""
+    q = db.session.query(
+        func.strftime('%Y-%m', Complaint.date_received).label('month'),
+        Complaint.company_response,
+        func.count().label('count')
+    ).filter(Complaint.company == company)
+
+    q = q.group_by('month', Complaint.company_response).order_by('month')
+    results = q.all()
+
+    months_seen = sorted(set(r.month for r in results))
+    if months and len(months_seen) > months:
+        cutoff = months_seen[-months]
+        results = [r for r in results if r.month >= cutoff]
+
+    return [{'month': r.month, 'response': r.company_response, 'count': r.count} for r in results]
+
+
+def get_sub_product_breakdown(company=None, product=None):
+    """Sub-product counts, optionally filtered by company and/or product."""
+    q = db.session.query(
+        Complaint.sub_product,
+        func.count().label('count')
+    )
+    if company:
+        q = q.filter(Complaint.company == company)
+    if product:
+        q = q.filter(Complaint.product == product)
+    q = q.filter(Complaint.sub_product.isnot(None), Complaint.sub_product != '')
+    q = q.group_by(Complaint.sub_product).order_by(desc('count'))
+    return [{'sub_product': r.sub_product, 'count': r.count} for r in q.all()]
+
+
+def get_issue_resolution_mix(company=None, limit=15):
+    """For top issues, show breakdown of response types."""
+    # First get top issues
+    top_issues_q = db.session.query(
+        Complaint.issue,
+        func.count().label('count')
+    )
+    if company:
+        top_issues_q = top_issues_q.filter(Complaint.company == company)
+    top_issues_q = top_issues_q.group_by(Complaint.issue).order_by(desc('count')).limit(limit)
+    top_issues = [r.issue for r in top_issues_q.all()]
+
+    # Now get response breakdown for each issue
+    q = db.session.query(
+        Complaint.issue,
+        Complaint.company_response,
+        func.count().label('count')
+    )
+    if company:
+        q = q.filter(Complaint.company == company)
+    q = q.filter(Complaint.issue.in_(top_issues))
+    q = q.group_by(Complaint.issue, Complaint.company_response)
+    rows = q.all()
+
+    result = {}
+    for r in rows:
+        if r.issue not in result:
+            result[r.issue] = {}
+        result[r.issue][r.company_response] = r.count
+
+    return result
+
+
+def get_mom_changes(company=None):
+    """Month-over-month changes for key metrics. Compare most recent full month vs previous."""
+    # Find the most recent full month (not current partial month)
+    today = datetime.utcnow().date()
+    # End of last full month
+    first_of_current = today.replace(day=1)
+    last_month_end = first_of_current - timedelta(days=1)
+    last_month_start = last_month_end.replace(day=1)
+    # Previous month
+    prev_month_end = last_month_start - timedelta(days=1)
+    prev_month_start = prev_month_end.replace(day=1)
+
+    def _query_month(start, end):
+        q = Complaint.query.filter(
+            Complaint.date_received >= start,
+            Complaint.date_received <= end
+        )
+        if company:
+            q = q.filter(Complaint.company == company)
+        return q
+
+    current_q = _query_month(last_month_start, last_month_end)
+    prev_q = _query_month(prev_month_start, prev_month_end)
+
+    current_total = current_q.count()
+    prev_total = prev_q.count()
+
+    current_monetary = current_q.filter(
+        Complaint.company_response == 'Closed with monetary relief'
+    ).count()
+    prev_monetary = prev_q.filter(
+        Complaint.company_response == 'Closed with monetary relief'
+    ).count()
+
+    volume_change_pct = round((current_total - prev_total) / prev_total * 100, 1) if prev_total else 0
+    current_mr_rate = round(current_monetary / current_total * 100, 1) if current_total else 0
+    prev_mr_rate = round(prev_monetary / prev_total * 100, 1) if prev_total else 0
+    monetary_relief_change_pct = round(current_mr_rate - prev_mr_rate, 1)
+
+    # Issue-level changes
+    def _issue_counts(start, end):
+        q = db.session.query(
+            Complaint.issue,
+            func.count().label('count')
+        ).filter(
+            Complaint.date_received >= start,
+            Complaint.date_received <= end
+        )
+        if company:
+            q = q.filter(Complaint.company == company)
+        q = q.group_by(Complaint.issue)
+        return {r.issue: r.count for r in q.all()}
+
+    current_issues = _issue_counts(last_month_start, last_month_end)
+    prev_issues = _issue_counts(prev_month_start, prev_month_end)
+
+    all_issues = set(current_issues.keys()) | set(prev_issues.keys())
+    changes = []
+    for issue in all_issues:
+        cur = current_issues.get(issue, 0)
+        prev = prev_issues.get(issue, 0)
+        pct = round((cur - prev) / prev * 100, 1) if prev else (100.0 if cur else 0)
+        changes.append({'issue': issue, 'current': cur, 'previous': prev, 'change_pct': pct})
+
+    growing = sorted([c for c in changes if c['change_pct'] > 0], key=lambda x: -x['change_pct'])[:5]
+    declining = sorted([c for c in changes if c['change_pct'] < 0], key=lambda x: x['change_pct'])[:5]
+
+    return {
+        'volume_change_pct': volume_change_pct,
+        'monetary_relief_change_pct': monetary_relief_change_pct,
+        'top_growing_issues': growing,
+        'top_declining_issues': declining,
+    }
+
+
+def get_tags_trend(company=None, months=12):
+    """Monthly trend of complaints by tag (Older American, Servicemember, etc.)."""
+    q = db.session.query(
+        func.strftime('%Y-%m', Complaint.date_received).label('month'),
+        Complaint.tags,
+        func.count().label('count')
+    )
+    if company:
+        q = q.filter(Complaint.company == company)
+    q = q.filter(Complaint.tags.isnot(None), Complaint.tags != '', Complaint.tags != 'None')
+    q = q.group_by('month', Complaint.tags).order_by('month')
+    results = q.all()
+
+    months_seen = sorted(set(r.month for r in results))
+    if months and len(months_seen) > months:
+        cutoff = months_seen[-months]
+        results = [r for r in results if r.month >= cutoff]
+
+    return [{'month': r.month, 'tag': r.tags, 'count': r.count} for r in results]
+
+
+def get_channel_trend(company=None, months=12):
+    """Monthly trend by submission channel."""
+    q = db.session.query(
+        func.strftime('%Y-%m', Complaint.date_received).label('month'),
+        Complaint.submitted_via,
+        func.count().label('count')
+    )
+    if company:
+        q = q.filter(Complaint.company == company)
+    q = q.filter(Complaint.submitted_via.isnot(None), Complaint.submitted_via != '')
+    q = q.group_by('month', Complaint.submitted_via).order_by('month')
+    results = q.all()
+
+    months_seen = sorted(set(r.month for r in results))
+    if months and len(months_seen) > months:
+        cutoff = months_seen[-months]
+        results = [r for r in results if r.month >= cutoff]
+
+    return [{'month': r.month, 'channel': r.submitted_via, 'count': r.count} for r in results]
+
+
+def get_peer_companies(company, limit=5):
+    """Find top N companies with similar product mix and highest complaint volumes.
+
+    Uses local DB data. If only one company exists locally, falls back to
+    CFPB external data for top companies.
+    """
+    # Get products offered by the target company
+    target_products = db.session.query(Complaint.product).filter(
+        Complaint.company == company
+    ).distinct().all()
+    target_product_set = {r.product for r in target_products}
+
+    if not target_product_set:
+        return []
+
+    # Find other companies that share at least one product, ranked by complaint volume
+    q = db.session.query(
+        Complaint.company,
+        func.count().label('count')
+    ).filter(
+        Complaint.company != company,
+        Complaint.product.in_(target_product_set)
+    ).group_by(Complaint.company).order_by(desc('count')).limit(limit)
+
+    peers = [{'company': r.company, 'count': r.count} for r in q.all()]
+
+    # Fallback to external CFPB data if we have very few local peers
+    if len(peers) < 2:
+        try:
+            from services.external_apis import cfpb_get_top_companies
+            external = cfpb_get_top_companies(limit=limit + 5)
+            for ext in external:
+                if ext['company'] != company and len(peers) < limit:
+                    if not any(p['company'] == ext['company'] for p in peers):
+                        peers.append({'company': ext['company'], 'count': ext.get('complaints', 0)})
+        except Exception:
+            pass
+
+    return peers[:limit]
+
+
+def get_peer_comparison(company, peers):
+    """Compare a company against a list of peer companies across key metrics.
+
+    Args:
+        company: The target company name.
+        peers: List of peer company names (strings).
+
+    Returns:
+        List of dicts, one per company (target + peers), each with:
+        total_complaints, resolution_rate, monetary_relief_rate, top_product, top_issue.
+    """
+    all_companies = [company] + [p for p in peers if p != company]
+    results = []
+
+    for comp in all_companies:
+        kpis = get_kpis(company=comp)
+
+        # Top product
+        top_product_q = db.session.query(
+            Complaint.product,
+            func.count().label('count')
+        ).filter(Complaint.company == comp).group_by(
+            Complaint.product
+        ).order_by(desc('count')).limit(1).first()
+
+        # Top issue
+        top_issue_q = db.session.query(
+            Complaint.issue,
+            func.count().label('count')
+        ).filter(Complaint.company == comp).group_by(
+            Complaint.issue
+        ).order_by(desc('count')).limit(1).first()
+
+        results.append({
+            'company': comp,
+            'total_complaints': kpis['total'],
+            'resolution_rate': kpis['resolution_rate'],
+            'monetary_relief_rate': kpis['monetary_relief_rate'],
+            'top_product': top_product_q.product if top_product_q else None,
+            'top_issue': top_issue_q.issue if top_issue_q else None,
+        })
+
+    return results
+
+
+def get_issue_sub_issue_tree(company=None, limit=10):
+    """Top issues with their sub-issues nested."""
+    # Get top issues
+    top_q = db.session.query(
+        Complaint.issue,
+        func.count().label('count')
+    )
+    if company:
+        top_q = top_q.filter(Complaint.company == company)
+    top_q = top_q.group_by(Complaint.issue).order_by(desc('count')).limit(limit)
+    top_issues = top_q.all()
+
+    issue_names = [r.issue for r in top_issues]
+
+    # Get sub-issues for those top issues
+    sub_q = db.session.query(
+        Complaint.issue,
+        Complaint.sub_issue,
+        func.count().label('count')
+    )
+    if company:
+        sub_q = sub_q.filter(Complaint.company == company)
+    sub_q = sub_q.filter(
+        Complaint.issue.in_(issue_names),
+        Complaint.sub_issue.isnot(None),
+        Complaint.sub_issue != ''
+    ).group_by(Complaint.issue, Complaint.sub_issue).order_by(Complaint.issue, desc('count'))
+    sub_rows = sub_q.all()
+
+    # Build lookup
+    sub_map = {}
+    for r in sub_rows:
+        if r.issue not in sub_map:
+            sub_map[r.issue] = []
+        sub_map[r.issue].append({'sub_issue': r.sub_issue, 'count': r.count})
+
+    return [
+        {
+            'issue': r.issue,
+            'count': r.count,
+            'sub_issues': sub_map.get(r.issue, [])
+        }
+        for r in top_issues
+    ]

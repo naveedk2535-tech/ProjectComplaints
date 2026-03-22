@@ -1,149 +1,390 @@
 {% extends "base.html" %}
-{% block title %}Segmentation - ComplaintsHoo{% endblock %}
+{% block title %}Client Details - ComplaintsHoo{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-4 py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 style="font-weight: 800;"><i class="fas fa-layer-group me-2"></i>Segmentation Analysis</h2>
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 style="font-weight: 800;"><i class="fas fa-building me-2"></i>Client Details</h2>
+            <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0;">Deep-dive analysis with peer comparison</p>
+        </div>
         <div class="d-flex gap-2 align-items-center">
-            <select id="companyFilter" class="form-select-cw" style="width: 250px;" onchange="loadAll()">
-                <option value="">All Companies</option>
-            </select>
-            <select id="productFilter" class="form-select-cw" style="width: 200px;" onchange="loadIssues()">
-                <option value="">All Products</option>
+            <select id="companyFilter" class="form-select-cw" style="width: 300px;" onchange="loadAll()">
+                <option value="">Loading companies...</option>
             </select>
             {% if current_user and current_user.is_premium %}
-            <a id="exportBtn" href="/api/export/segmentation-data" class="btn btn-cw-outline btn-sm" title="Export data as TXT">
+            <a id="exportBtn" href="/api/export/segmentation-data" class="btn btn-cw-outline btn-sm">
                 <i class="fas fa-download me-1"></i>Export
             </a>
             {% else %}
-            <a href="{{ url_for('pricing') }}" class="btn btn-cw-outline btn-sm" title="Premium feature">
+            <a href="{{ url_for('pricing') }}" class="btn btn-cw-outline btn-sm">
                 <i class="fas fa-lock me-1"></i>Export <span class="badge-premium ms-1">PRO</span>
             </a>
             {% endif %}
         </div>
     </div>
 
-    <!-- Top Issues + Submission Channels -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-8">
-            <div class="chart-container" style="height: 420px;">
-                <h5><i class="fas fa-exclamation-circle me-2"></i>Top Issues</h5>
-                <div style="position: relative; height: 360px;"><canvas id="issueChart"></canvas></div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="chart-container" style="height: 420px;">
-                <h5><i class="fas fa-paper-plane me-2"></i>Submission Channels</h5>
-                <div style="position: relative; height: 360px;"><canvas id="channelChart"></canvas></div>
-            </div>
-        </div>
-    </div>
+    <!-- Sub-tabs -->
+    <ul class="nav nav-pills mb-4" style="gap: 0.5rem;">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="pill" href="#tab-performance" style="background: var(--accent-indigo); color: white; border-radius: 10px; font-size: 0.85rem; font-weight: 600;">
+                <i class="fas fa-chart-line me-1"></i>Performance
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#tab-issues" style="border-radius: 10px; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">
+                <i class="fas fa-exclamation-circle me-1"></i>Issues Deep-Dive
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#tab-comparison" style="border-radius: 10px; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">
+                <i class="fas fa-balance-scale me-1"></i>Peer Comparison
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#tab-trends" style="border-radius: 10px; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">
+                <i class="fas fa-arrows-alt me-1"></i>Movement & Trends
+            </a>
+        </li>
+    </ul>
 
-    <!-- Tags Analysis + Product Response Cross-tab -->
-    <div class="row g-3">
-        <div class="col-md-4">
-            <div class="chart-container" style="height: 380px;">
-                <h5><i class="fas fa-tags me-2"></i>Consumer Tags</h5>
-                <div style="position: relative; height: 320px;"><canvas id="tagsChart"></canvas></div>
+    <div class="tab-content">
+
+        <!-- ═══ TAB 1: Performance ═══ -->
+        <div class="tab-pane fade show active" id="tab-performance">
+            <!-- KPI Row -->
+            <div class="row g-3 mb-4" id="client-kpis">
+                <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-indigo"></div><div class="ps-3"><div class="kpi-value" id="ck-total" style="font-size:1.6rem; color: var(--accent-indigo-light);">--</div><div class="kpi-label">Total Complaints</div></div></div></div>
+                <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-green"></div><div class="ps-3"><div class="kpi-value" id="ck-resolution" style="font-size:1.6rem; color: var(--accent-green);">--</div><div class="kpi-label">Resolution Rate</div></div></div></div>
+                <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-cyan"></div><div class="ps-3"><div class="kpi-value" id="ck-monetary" style="font-size:1.6rem; color: var(--accent-cyan);">--</div><div class="kpi-label">Monetary Relief</div></div></div></div>
+                <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-amber"></div><div class="ps-3"><div class="kpi-value" id="ck-health" style="font-size:1.6rem; color: var(--accent-amber);">--</div><div class="kpi-label">Health Grade</div></div></div></div>
+                <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-red"></div><div class="ps-3"><div class="kpi-value" id="ck-progress" style="font-size:1.6rem; color: var(--accent-red);">--</div><div class="kpi-label">In Progress</div></div></div></div>
+                <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-purple"></div><div class="ps-3"><div class="kpi-value" id="ck-narratives" style="font-size:1.6rem; color: var(--accent-purple);">--</div><div class="kpi-label">With Narrative</div></div></div></div>
+            </div>
+
+            <!-- Monthly Trend by Product -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-8">
+                    <div class="chart-container" style="height: 380px;">
+                        <h5><i class="fas fa-layer-group me-2"></i>Monthly Complaints by Product</h5>
+                        <div style="position: relative; height: 320px;"><canvas id="productTrendChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="chart-container" style="height: 380px;">
+                        <h5><i class="fas fa-chart-pie me-2"></i>Response Types</h5>
+                        <div style="position: relative; height: 320px;"><canvas id="responseDonut"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sub-Products + Channels -->
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="chart-container" style="height: 380px;">
+                        <h5><i class="fas fa-sitemap me-2"></i>Sub-Product Breakdown</h5>
+                        <div style="position: relative; height: 320px;"><canvas id="subProductChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="chart-container" style="height: 380px;">
+                        <h5><i class="fas fa-paper-plane me-2"></i>Submission Channel Trend</h5>
+                        <div style="position: relative; height: 320px;"><canvas id="channelTrendChart"></canvas></div>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="col-md-8">
-            <div class="chart-container" style="height: 380px;">
-                <h5><i class="fas fa-th me-2"></i>Product vs. Resolution Type</h5>
-                <div style="position: relative; height: 320px;"><canvas id="crosstabChart"></canvas></div>
+
+        <!-- ═══ TAB 2: Issues Deep-Dive ═══ -->
+        <div class="tab-pane fade" id="tab-issues">
+            <!-- Issue Resolution Mix -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-8">
+                    <div class="chart-container" style="height: 420px;">
+                        <h5><i class="fas fa-balance-scale-left me-2"></i>Issue Resolution Mix (How each issue gets resolved)</h5>
+                        <div style="position: relative; height: 360px;"><canvas id="issueResolutionChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="chart-container" style="height: 420px;">
+                        <h5><i class="fas fa-users me-2"></i>Consumer Tags</h5>
+                        <div style="position: relative; height: 180px;"><canvas id="tagsChart"></canvas></div>
+                        <h5 class="mt-3"><i class="fas fa-users me-2"></i>Tags Trend</h5>
+                        <div style="position: relative; height: 120px;"><canvas id="tagsTrendChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Issue Tree Table -->
+            <div class="card-cw p-4">
+                <h5 style="font-weight: 700;" class="mb-3"><i class="fas fa-project-diagram me-2"></i>Issue &rarr; Sub-Issue Breakdown</h5>
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-cw" id="issueTreeTable">
+                        <thead><tr><th>Issue</th><th>Count</th><th>Sub-Issues</th></tr></thead>
+                        <tbody id="issueTreeBody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
-    </div>
+
+        <!-- ═══ TAB 3: Peer Comparison ═══ -->
+        <div class="tab-pane fade" id="tab-comparison">
+            <div id="peer-loading" class="text-center py-4"><div class="spinner-cw"></div><p class="mt-2" style="color: var(--text-secondary);">Loading peer comparison data from CFPB...</p></div>
+            <div id="peer-content" style="display: none;">
+                <!-- Peer KPI Comparison -->
+                <div class="card-cw p-4 mb-4">
+                    <h5 style="font-weight: 700;"><i class="fas fa-balance-scale me-2"></i><span id="peer-title">Company</span> vs Top Peers</h5>
+                    <div class="table-responsive">
+                        <table class="table table-cw">
+                            <thead><tr><th>Institution</th><th>Complaints</th><th>Resolution Rate</th><th>Monetary Relief</th><th>Top Product</th><th>Top Issue</th></tr></thead>
+                            <tbody id="peerTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- Peer Volume Comparison Chart -->
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="chart-container" style="height: 380px;">
+                            <h5><i class="fas fa-chart-bar me-2"></i>Complaint Volume Comparison</h5>
+                            <div style="position: relative; height: 320px;"><canvas id="peerVolumeChart"></canvas></div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="chart-container" style="height: 380px;">
+                            <h5><i class="fas fa-star me-2"></i>Resolution Rate Comparison</h5>
+                            <div style="position: relative; height: 320px;"><canvas id="peerResolutionChart"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ TAB 4: Movement & Trends ═══ -->
+        <div class="tab-pane fade" id="tab-trends">
+            <!-- MoM Changes -->
+            <div id="mom-section" class="mb-4">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="kpi-card text-center">
+                            <div class="kpi-label mb-1">Volume Change (MoM)</div>
+                            <div class="kpi-value" id="mom-volume" style="font-size: 1.8rem;">--</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="kpi-card text-center">
+                            <div class="kpi-label mb-1">Monetary Relief Change</div>
+                            <div class="kpi-value" id="mom-monetary" style="font-size: 1.8rem;">--</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card-cw p-3">
+                            <h6 style="font-weight: 700; font-size: 0.8rem; color: var(--accent-red);"><i class="fas fa-arrow-up me-1"></i>Top Growing Issues</h6>
+                            <div id="mom-growing" style="font-size: 0.8rem;"></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card-cw p-3">
+                            <h6 style="font-weight: 700; font-size: 0.8rem; color: var(--accent-green);"><i class="fas fa-arrow-down me-1"></i>Top Declining Issues</h6>
+                            <div id="mom-declining" style="font-size: 0.8rem;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Response Quality Over Time -->
+            <div class="row g-3 mb-4">
+                <div class="col-12">
+                    <div class="chart-container" style="height: 380px;">
+                        <h5><i class="fas fa-chart-area me-2"></i>Response Quality Over Time (Monthly)</h5>
+                        <div style="position: relative; height: 320px;"><canvas id="responseTrendChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Product Trend + Tags Trend -->
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="chart-container" style="height: 380px;">
+                        <h5><i class="fas fa-boxes-stacked me-2"></i>Product Mix Over Time</h5>
+                        <div style="position: relative; height: 320px;"><canvas id="productMixChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="chart-container" style="height: 380px;">
+                        <h5><i class="fas fa-users me-2"></i>Special Population Trends (Tags)</h5>
+                        <div style="position: relative; height: 320px;"><canvas id="tagsMixChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- end tab-content -->
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16'];
-let issueChart, channelChart, tagsChart, crosstabChart;
+const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16','#64748b','#d946ef'];
+const RESP_COLORS = {'Closed with explanation':'#6366f1','Closed with monetary relief':'#22c55e','Closed with non-monetary relief':'#f59e0b','In progress':'#ef4444'};
+let charts = {};
 
-function getCompany() { return document.getElementById('companyFilter').value; }
-function getProduct() { return document.getElementById('productFilter').value; }
+function C() { return document.getElementById('companyFilter').value; }
 function qs(extra={}) {
-    const p = {};
-    const c = getCompany(); if (c) p.company = c;
+    const p = {}; const c = C(); if (c) p.company = c;
     Object.assign(p, extra);
     return '?' + new URLSearchParams(p).toString();
 }
+function destroyChart(name) { if (charts[name]) { charts[name].destroy(); delete charts[name]; } }
+function fmt(n) { return n != null ? Number(n).toLocaleString() : '--'; }
+function pct(n) { return n != null ? n.toFixed(1) + '%' : '--'; }
+function changeColor(v) { return v > 0 ? 'var(--accent-red)' : v < 0 ? 'var(--accent-green)' : 'var(--text-muted)'; }
+function changeArrow(v) { return v > 0 ? '+' + v.toFixed(1) + '%' : v < 0 ? v.toFixed(1) + '%' : '0%'; }
 
 async function loadCompanies() {
     const res = await fetch('/api/companies');
     const data = await res.json();
     const sel = document.getElementById('companyFilter');
-    data.forEach(c => {
+    sel.innerHTML = '';
+    // Default to first company (usually SYNCHRONY FINANCIAL)
+    data.forEach((c, i) => {
         const opt = document.createElement('option');
         opt.value = c.company;
         opt.textContent = `${c.company} (${c.count.toLocaleString()})`;
+        if (i === 0) opt.selected = true;
         sel.appendChild(opt);
     });
+    loadAll();
 }
 
-async function loadProducts() {
-    const res = await fetch('/api/product-breakdown' + qs());
-    const data = await res.json();
-    const sel = document.getElementById('productFilter');
-    const current = sel.value;
-    sel.innerHTML = '<option value="">All Products</option>';
-    data.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.product;
-        opt.textContent = `${p.product} (${p.count})`;
-        sel.appendChild(opt);
-    });
-    sel.value = current;
+// ── TAB 1: Performance ──
+async function loadKPIs() {
+    const [kpiRes, healthRes] = await Promise.all([
+        fetch('/api/kpis' + qs()),
+        fetch('/api/health-score' + qs())
+    ]);
+    const k = await kpiRes.json();
+    const h = await healthRes.json();
+    document.getElementById('ck-total').textContent = fmt(k.total);
+    document.getElementById('ck-resolution').textContent = pct(k.resolution_rate);
+    document.getElementById('ck-monetary').textContent = pct(k.monetary_relief_rate);
+    document.getElementById('ck-health').textContent = h.grade + ' (' + h.score + ')';
+    document.getElementById('ck-progress').textContent = fmt(k.in_progress);
+    document.getElementById('ck-narratives').textContent = fmt(k.with_narrative);
 }
 
-async function loadIssues() {
-    const product = getProduct();
-    const extra = product ? {product} : {};
-    const res = await fetch('/api/issue-breakdown' + qs(extra));
+async function loadProductTrend() {
+    const res = await fetch('/api/monthly-trend-by-product' + qs());
     const data = await res.json();
-    const ctx = document.getElementById('issueChart').getContext('2d');
-    if (issueChart) issueChart.destroy();
-    issueChart = new Chart(ctx, {
+    const months = [...new Set(data.map(d => d.month))].sort();
+    const products = [...new Set(data.map(d => d.product))];
+    const lookup = {};
+    data.forEach(d => { lookup[d.month + '|' + d.product] = d.count; });
+
+    destroyChart('productTrend');
+    charts.productTrend = new Chart(document.getElementById('productTrendChart').getContext('2d'), {
         type: 'bar',
         data: {
-            labels: data.map(d => d.issue.length > 50 ? d.issue.substring(0, 50) + '...' : d.issue),
-            datasets: [{
-                label: 'Complaints',
-                data: data.map(d => d.count),
-                backgroundColor: COLORS.map(c => c + '99'),
-                borderColor: COLORS,
+            labels: months,
+            datasets: products.map((p, i) => ({
+                label: p.length > 25 ? p.substring(0, 25) + '...' : p,
+                data: months.map(m => lookup[m + '|' + p] || 0),
+                backgroundColor: COLORS[i % COLORS.length] + '99',
+                borderColor: COLORS[i % COLORS.length],
                 borderWidth: 1,
-                borderRadius: 6,
-            }]
+            }))
         },
         options: {
-            responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-            plugins: { legend: { display: false } },
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'top', labels: { color: '#8b8fa3', font: { size: 9 }, padding: 6 } } },
             scales: {
-                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } },
-                y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } }
+                x: { stacked: true, grid: { display: false }, ticks: { color: '#8b8fa3', font: { size: 10 } } },
+                y: { stacked: true, grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } }
             }
         }
     });
 }
 
-async function loadChannels() {
-    const res = await fetch('/api/submission-channels' + qs());
+async function loadResponseDonut() {
+    const res = await fetch('/api/response-breakdown' + qs());
     const data = await res.json();
-    const ctx = document.getElementById('channelChart').getContext('2d');
-    if (channelChart) channelChart.destroy();
-    channelChart = new Chart(ctx, {
+    destroyChart('responseDonut');
+    charts.responseDonut = new Chart(document.getElementById('responseDonut').getContext('2d'), {
         type: 'doughnut',
         data: {
-            labels: data.map(d => d.channel),
-            datasets: [{ data: data.map(d => d.count), backgroundColor: COLORS, borderWidth: 0 }]
+            labels: data.map(d => d.response),
+            datasets: [{ data: data.map(d => d.count), backgroundColor: data.map(d => (RESP_COLORS[d.response] || '#64748b') + 'cc'), borderWidth: 0 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#8b8fa3', font: { size: 10 }, padding: 8 } } } }
+    });
+}
+
+async function loadSubProducts() {
+    const res = await fetch('/api/sub-product-breakdown' + qs());
+    const data = await res.json();
+    destroyChart('subProduct');
+    charts.subProduct = new Chart(document.getElementById('subProductChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: data.slice(0, 12).map(d => d.sub_product.length > 30 ? d.sub_product.substring(0, 30) + '...' : d.sub_product),
+            datasets: [{ data: data.slice(0, 12).map(d => d.count), backgroundColor: COLORS.map(c => c + '99'), borderRadius: 6 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: { x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } }, y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } } }
+        }
+    });
+}
+
+async function loadChannelTrend() {
+    const res = await fetch('/api/channel-trend' + qs());
+    const data = await res.json();
+    const months = [...new Set(data.map(d => d.month))].sort();
+    const channels = [...new Set(data.map(d => d.channel))];
+    const lookup = {};
+    data.forEach(d => { lookup[d.month + '|' + d.channel] = d.count; });
+
+    destroyChart('channelTrend');
+    charts.channelTrend = new Chart(document.getElementById('channelTrendChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: channels.map((ch, i) => ({
+                label: ch, data: months.map(m => lookup[m + '|' + ch] || 0),
+                borderColor: COLORS[i % COLORS.length], backgroundColor: COLORS[i % COLORS.length] + '22',
+                fill: true, tension: 0.4, pointRadius: 3,
+            }))
         },
         options: {
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom', labels: { color: '#8b8fa3', font: { size: 11 }, padding: 12 } } }
+            plugins: { legend: { position: 'top', labels: { color: '#8b8fa3', font: { size: 10 } } } },
+            scales: { x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } }, y: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' }, beginAtZero: true } }
+        }
+    });
+}
+
+// ── TAB 2: Issues Deep-Dive ──
+async function loadIssueResolution() {
+    const res = await fetch('/api/issue-resolution-mix' + qs());
+    const data = await res.json();
+    const issues = Object.keys(data).slice(0, 12);
+    const responses = ['Closed with explanation','Closed with monetary relief','Closed with non-monetary relief','In progress'];
+
+    destroyChart('issueResolution');
+    charts.issueResolution = new Chart(document.getElementById('issueResolutionChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: issues.map(i => i.length > 35 ? i.substring(0, 35) + '...' : i),
+            datasets: responses.map(r => ({
+                label: r, data: issues.map(i => data[i][r] || 0),
+                backgroundColor: (RESP_COLORS[r] || '#64748b') + '99',
+            }))
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+            plugins: { legend: { position: 'top', labels: { color: '#8b8fa3', font: { size: 9 } } } },
+            scales: { x: { stacked: true, grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } }, y: { stacked: true, grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 9 } } } }
         }
     });
 }
@@ -151,71 +392,217 @@ async function loadChannels() {
 async function loadTags() {
     const res = await fetch('/api/tags-analysis' + qs());
     const data = await res.json();
-    const ctx = document.getElementById('tagsChart').getContext('2d');
-    if (tagsChart) tagsChart.destroy();
-    if (data.length === 0) {
-        ctx.canvas.parentElement.innerHTML += '<p class="text-center mt-4" style="color: var(--text-muted);">No tag data available</p>';
-        return;
-    }
-    tagsChart = new Chart(ctx, {
+    destroyChart('tags');
+    if (data.length === 0) { document.getElementById('tagsChart').parentElement.innerHTML = '<p style="color:var(--text-muted); text-align:center; margin-top:2rem;">No tag data</p>'; return; }
+    charts.tags = new Chart(document.getElementById('tagsChart').getContext('2d'), {
+        type: 'bar',
+        data: { labels: data.map(d => d.tag), datasets: [{ data: data.map(d => d.count), backgroundColor: ['#f59e0b99','#06b6d499','#a855f799'], borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 9 } } }, y: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } } } }
+    });
+}
+
+async function loadTagsTrend() {
+    const res = await fetch('/api/tags-trend' + qs());
+    const data = await res.json();
+    if (!data.length) return;
+    const months = [...new Set(data.map(d => d.month))].sort();
+    const tags = [...new Set(data.map(d => d.tag))];
+    const lookup = {};
+    data.forEach(d => { lookup[d.month + '|' + d.tag] = d.count; });
+
+    destroyChart('tagsTrend');
+    charts.tagsTrend = new Chart(document.getElementById('tagsTrendChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: tags.map((t, i) => ({ label: t, data: months.map(m => lookup[m + '|' + t] || 0), borderColor: COLORS[i + 3], tension: 0.4, pointRadius: 2 }))
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8b8fa3', font: { size: 9 } } } }, scales: { x: { ticks: { color: '#8b8fa3', font: { size: 8 } } }, y: { ticks: { color: '#8b8fa3' }, beginAtZero: true } } }
+    });
+}
+
+async function loadIssueTree() {
+    const res = await fetch('/api/issue-tree' + qs());
+    const data = await res.json();
+    const tbody = document.getElementById('issueTreeBody');
+    tbody.innerHTML = data.map(d => `
+        <tr>
+            <td style="font-weight: 600;">${d.issue}</td>
+            <td style="font-weight: 700;">${fmt(d.count)}</td>
+            <td style="font-size: 0.8rem; color: var(--text-secondary);">
+                ${d.sub_issues.map(s => `<span style="display:inline-block; background:rgba(99,102,241,0.1); padding:0.15rem 0.5rem; border-radius:6px; margin:0.1rem;">${s.sub_issue.substring(0,40)} <strong>(${s.count})</strong></span>`).join(' ')}
+            </td>
+        </tr>
+    `).join('');
+}
+
+// ── TAB 3: Peer Comparison ──
+async function loadPeerComparison() {
+    document.getElementById('peer-loading').style.display = 'block';
+    document.getElementById('peer-content').style.display = 'none';
+
+    const company = C();
+    const res = await fetch('/api/peer-comparison?company=' + encodeURIComponent(company));
+    const data = await res.json();
+
+    document.getElementById('peer-loading').style.display = 'none';
+    document.getElementById('peer-content').style.display = 'block';
+    document.getElementById('peer-title').textContent = company;
+
+    // Table
+    const allCompanies = data.comparison || [];
+    document.getElementById('peerTableBody').innerHTML = allCompanies.map((c, i) => {
+        const isTarget = c.company === company;
+        return `<tr style="${isTarget ? 'background: rgba(99,102,241,0.1);' : ''}">
+            <td style="font-weight: ${isTarget ? '800' : '600'};">${isTarget ? '&#x2B50; ' : ''}${c.company}</td>
+            <td>${fmt(c.total_complaints)}</td>
+            <td><span style="color: ${c.resolution_rate > 85 ? 'var(--accent-green)' : 'var(--accent-amber)'}; font-weight: 600;">${pct(c.resolution_rate)}</span></td>
+            <td>${pct(c.monetary_relief_rate)}</td>
+            <td style="font-size:0.8rem;">${c.top_product || 'N/A'}</td>
+            <td style="font-size:0.8rem;">${(c.top_issue || 'N/A').substring(0, 35)}</td>
+        </tr>`;
+    }).join('');
+
+    // Volume chart
+    destroyChart('peerVolume');
+    charts.peerVolume = new Chart(document.getElementById('peerVolumeChart').getContext('2d'), {
         type: 'bar',
         data: {
-            labels: data.map(d => d.tag),
-            datasets: [{ data: data.map(d => d.count), backgroundColor: ['#f59e0b99','#06b6d499','#a855f799','#ef444499'], borderRadius: 6 }]
+            labels: allCompanies.map(c => c.company.length > 20 ? c.company.substring(0, 20) + '...' : c.company),
+            datasets: [{ data: allCompanies.map(c => c.total_complaints), backgroundColor: allCompanies.map(c => c.company === company ? '#6366f1' : '#6366f166'), borderRadius: 6 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } }, y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } } } }
+    });
+
+    // Resolution chart
+    destroyChart('peerResolution');
+    charts.peerResolution = new Chart(document.getElementById('peerResolutionChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: allCompanies.map(c => c.company.length > 20 ? c.company.substring(0, 20) + '...' : c.company),
+            datasets: [{ label: 'Resolution %', data: allCompanies.map(c => c.resolution_rate), backgroundColor: allCompanies.map(c => c.company === company ? '#22c55e' : '#22c55e66'), borderRadius: 6 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3', callback: v => v + '%' }, max: 100 }, y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } } } }
+    });
+}
+
+// ── TAB 4: Movement & Trends ──
+async function loadMoM() {
+    const res = await fetch('/api/mom-changes' + qs());
+    const d = await res.json();
+
+    const volEl = document.getElementById('mom-volume');
+    volEl.textContent = changeArrow(d.volume_change_pct);
+    volEl.style.color = changeColor(d.volume_change_pct);
+
+    const monEl = document.getElementById('mom-monetary');
+    monEl.textContent = changeArrow(d.monetary_relief_change_pct);
+    monEl.style.color = d.monetary_relief_change_pct > 0 ? 'var(--accent-green)' : d.monetary_relief_change_pct < 0 ? 'var(--accent-red)' : 'var(--text-muted)';
+
+    document.getElementById('mom-growing').innerHTML = (d.top_growing_issues || []).slice(0, 4).map(i =>
+        `<div class="d-flex justify-content-between"><span>${i.issue.substring(0, 28)}</span><span style="color: var(--accent-red); font-weight: 600;">${changeArrow(i.change_pct)}</span></div>`
+    ).join('') || '<span style="color:var(--text-muted);">No data</span>';
+
+    document.getElementById('mom-declining').innerHTML = (d.top_declining_issues || []).slice(0, 4).map(i =>
+        `<div class="d-flex justify-content-between"><span>${i.issue.substring(0, 28)}</span><span style="color: var(--accent-green); font-weight: 600;">${changeArrow(i.change_pct)}</span></div>`
+    ).join('') || '<span style="color:var(--text-muted);">No data</span>';
+}
+
+async function loadResponseTrend() {
+    const res = await fetch('/api/monthly-trend-by-response' + qs());
+    const data = await res.json();
+    const months = [...new Set(data.map(d => d.month))].sort();
+    const responses = [...new Set(data.map(d => d.response))];
+    const lookup = {};
+    data.forEach(d => { lookup[d.month + '|' + d.response] = d.count; });
+
+    destroyChart('responseTrend');
+    charts.responseTrend = new Chart(document.getElementById('responseTrendChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: months,
+            datasets: responses.map(r => ({
+                label: r, data: months.map(m => lookup[m + '|' + r] || 0),
+                backgroundColor: (RESP_COLORS[r] || '#64748b') + '99',
+            }))
         },
         options: {
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } },
-                y: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } }
-            }
+            plugins: { legend: { position: 'top', labels: { color: '#8b8fa3', font: { size: 9 } } } },
+            scales: { x: { stacked: true, grid: { display: false }, ticks: { color: '#8b8fa3' } }, y: { stacked: true, grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } } }
         }
     });
 }
 
-async function loadCrosstab() {
-    const res = await fetch('/api/product-response-crosstab' + qs());
+async function loadProductMix() {
+    const res = await fetch('/api/monthly-trend-by-product' + qs());
     const data = await res.json();
-    const products = Object.keys(data.products);
-    const responses = data.responses;
-    const datasets = responses.map((r, i) => ({
-        label: r,
-        data: products.map(p => data.products[p][r] || 0),
-        backgroundColor: COLORS[i % COLORS.length] + '99',
-        borderColor: COLORS[i % COLORS.length],
-        borderWidth: 1,
-    }));
-    const ctx = document.getElementById('crosstabChart').getContext('2d');
-    if (crosstabChart) crosstabChart.destroy();
-    crosstabChart = new Chart(ctx, {
-        type: 'bar',
-        data: { labels: products, datasets },
+    const months = [...new Set(data.map(d => d.month))].sort();
+    const products = [...new Set(data.map(d => d.product))];
+    const lookup = {};
+    data.forEach(d => { lookup[d.month + '|' + d.product] = d.count; });
+
+    destroyChart('productMix');
+    charts.productMix = new Chart(document.getElementById('productMixChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: products.slice(0, 6).map((p, i) => ({
+                label: p.length > 20 ? p.substring(0, 20) + '...' : p,
+                data: months.map(m => lookup[m + '|' + p] || 0),
+                borderColor: COLORS[i], tension: 0.4, pointRadius: 3,
+            }))
+        },
         options: {
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { position: 'top', labels: { color: '#8b8fa3', font: { size: 10 }, padding: 8 } } },
-            scales: {
-                x: { stacked: true, grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 9 }, maxRotation: 45 } },
-                y: { stacked: true, grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } }
-            }
+            plugins: { legend: { labels: { color: '#8b8fa3', font: { size: 9 } } } },
+            scales: { x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } }, y: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' }, beginAtZero: true } }
         }
     });
 }
 
+async function loadTagsMix() {
+    const res = await fetch('/api/tags-trend' + qs());
+    const data = await res.json();
+    if (!data.length) { return; }
+    const months = [...new Set(data.map(d => d.month))].sort();
+    const tags = [...new Set(data.map(d => d.tag))];
+    const lookup = {};
+    data.forEach(d => { lookup[d.month + '|' + d.tag] = d.count; });
+
+    destroyChart('tagsMix');
+    charts.tagsMix = new Chart(document.getElementById('tagsMixChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: months,
+            datasets: tags.map((t, i) => ({
+                label: t, data: months.map(m => lookup[m + '|' + t] || 0),
+                backgroundColor: COLORS[i + 3] + '99',
+            }))
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#8b8fa3', font: { size: 10 } } } },
+            scales: { x: { stacked: true, grid: { display: false }, ticks: { color: '#8b8fa3' } }, y: { stacked: true, grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } } }
+        }
+    });
+}
+
+// ── Master Load ──
 function loadAll() {
-    loadProducts();
-    loadIssues();
-    loadChannels();
-    loadTags();
-    loadCrosstab();
     const exportBtn = document.getElementById('exportBtn');
-    if (exportBtn) {
-        const c = getCompany();
-        exportBtn.href = '/api/export/segmentation-data' + (c ? '?company=' + encodeURIComponent(c) : '');
-    }
+    if (exportBtn) { const c = C(); exportBtn.href = '/api/export/segmentation-data' + (c ? '?company=' + encodeURIComponent(c) : ''); }
+
+    // Tab 1
+    loadKPIs(); loadProductTrend(); loadResponseDonut(); loadSubProducts(); loadChannelTrend();
+    // Tab 2
+    loadIssueResolution(); loadTags(); loadTagsTrend(); loadIssueTree();
+    // Tab 3
+    loadPeerComparison();
+    // Tab 4
+    loadMoM(); loadResponseTrend(); loadProductMix(); loadTagsMix();
 }
 
 loadCompanies();
-loadAll();
 </script>
 {% endblock %}

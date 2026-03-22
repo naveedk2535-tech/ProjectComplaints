@@ -408,6 +408,77 @@ def create_app():
         from services.analytics import get_bank_comparison
         return jsonify(get_bank_comparison())
 
+    # ── Client Details APIs ───────────────────────────────────
+    @app.route('/api/monthly-trend-by-product')
+    @login_required
+    def api_monthly_trend_by_product():
+        from services.analytics import get_monthly_trend_by_product
+        company = request.args.get('company')
+        return jsonify(get_monthly_trend_by_product(company=company))
+
+    @app.route('/api/monthly-trend-by-response')
+    @login_required
+    def api_monthly_trend_by_response():
+        from services.analytics import get_monthly_trend_by_response
+        company = request.args.get('company')
+        return jsonify(get_monthly_trend_by_response(company=company))
+
+    @app.route('/api/sub-product-breakdown')
+    @login_required
+    def api_sub_product_breakdown():
+        from services.analytics import get_sub_product_breakdown
+        company = request.args.get('company')
+        product = request.args.get('product')
+        return jsonify(get_sub_product_breakdown(company=company, product=product))
+
+    @app.route('/api/issue-resolution-mix')
+    @login_required
+    def api_issue_resolution_mix():
+        from services.analytics import get_issue_resolution_mix
+        company = request.args.get('company')
+        return jsonify(get_issue_resolution_mix(company=company))
+
+    @app.route('/api/mom-changes')
+    @login_required
+    def api_mom_changes():
+        from services.analytics import get_mom_changes
+        company = request.args.get('company')
+        return jsonify(get_mom_changes(company=company))
+
+    @app.route('/api/tags-trend')
+    @login_required
+    def api_tags_trend():
+        from services.analytics import get_tags_trend
+        company = request.args.get('company')
+        return jsonify(get_tags_trend(company=company))
+
+    @app.route('/api/channel-trend')
+    @login_required
+    def api_channel_trend():
+        from services.analytics import get_channel_trend
+        company = request.args.get('company')
+        return jsonify(get_channel_trend(company=company))
+
+    @app.route('/api/peer-comparison')
+    @login_required
+    def api_peer_comparison():
+        from services.analytics import get_peer_comparison, get_peer_companies
+        company = request.args.get('company', 'SYNCHRONY FINANCIAL')
+        peers = get_peer_companies(company, limit=5)
+        peer_names = [p['company'] for p in peers]
+        return jsonify({
+            'target': company,
+            'peers': peers,
+            'comparison': get_peer_comparison(company, peer_names)
+        })
+
+    @app.route('/api/issue-tree')
+    @login_required
+    def api_issue_tree():
+        from services.analytics import get_issue_sub_issue_tree
+        company = request.args.get('company')
+        return jsonify(get_issue_sub_issue_tree(company=company))
+
     @app.route('/api/product-response-crosstab')
     @login_required
     def api_product_response_crosstab():
