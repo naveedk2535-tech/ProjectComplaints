@@ -106,7 +106,7 @@ def create_app():
                         app.logger.error(f'CSV auto-load failed: {e}')
                     break
 
-    # Create default admin user
+    # Create default admin + test user
     with app.app_context():
         admin = User.query.filter_by(email=os.getenv('ADMIN_EMAIL', 'admin@complaintswhoo.com')).first()
         if not admin:
@@ -117,8 +117,26 @@ def create_app():
                 subscription_status='active',
                 is_active=True,
             )
-            admin.set_password(os.getenv('ADMIN_PASSWORD', 'admin123'))
+            admin.set_password(os.getenv('ADMIN_PASSWORD', '!admin123!'))
             db.session.add(admin)
+            db.session.commit()
+        else:
+            # Update admin password if it changed
+            admin.set_password(os.getenv('ADMIN_PASSWORD', '!admin123!'))
+            db.session.commit()
+
+        # Create test user with 30-day trial
+        test_user = User.query.filter_by(email='test@complaintswhoo.com').first()
+        if not test_user:
+            test_user = User(
+                email='test@complaintswhoo.com',
+                name='Test User',
+                role='user',
+                is_active=True,
+            )
+            test_user.set_password('test123')
+            test_user.start_trial()
+            db.session.add(test_user)
             db.session.commit()
 
     # ── Decorators ──────────────────────────────────────────────
@@ -485,6 +503,67 @@ def create_app():
     def stripe_webhook():
         # Placeholder for Stripe webhook handling
         return jsonify({'received': True})
+
+    # ── External Data APIs ──────────────────────────────────────
+    @app.route('/api/external/bank-profile/<path:bank_name>')
+    @login_required
+    def api_external_bank_profile(bank_name):
+        from services.external_apis import build_comprehensive_bank_profile
+        return jsonify(build_comprehensive_bank_profile(bank_name))
+
+    @app.route('/api/external/industry-overview')
+    @login_required
+    def api_external_industry_overview():
+        from services.external_apis import get_industry_overview
+        return jsonify(get_industry_overview())
+
+    @app.route('/api/external/fdic/search')
+    @login_required
+    def api_fdic_search():
+        from services.external_apis import fdic_search_institutions
+        name = request.args.get('name')
+        state = request.args.get('state')
+        return jsonify(fdic_search_institutions(name=name, state=state))
+
+    @app.route('/api/external/fdic/failures')
+    @login_required
+    def api_fdic_failures():
+        from services.external_apis import fdic_get_failures
+        return jsonify(fdic_get_failures())
+
+    @app.route('/api/external/cfpb/top-companies')
+    @login_required
+    def api_cfpb_top_companies():
+        from services.external_apis import cfpb_get_top_companies
+        return jsonify(cfpb_get_top_companies())
+
+    @app.route('/api/external/cfpb/trends')
+    @login_required
+    def api_cfpb_trends():
+        from services.external_apis import cfpb_get_trends
+        company = request.args.get('company')
+        product = request.args.get('product')
+        return jsonify(cfpb_get_trends(company=company, product=product))
+
+    @app.route('/api/external/finra/search')
+    @login_required
+    def api_finra_search():
+        from services.external_apis import finra_search_firm
+        name = request.args.get('name', '')
+        return jsonify(finra_search_firm(name))
+
+    @app.route('/api/external/sec/search')
+    @login_required
+    def api_sec_search():
+        from services.external_apis import sec_search_company
+        name = request.args.get('name', '')
+        return jsonify(sec_search_company(name))
+
+    @app.route('/api/external/sec/enforcement')
+    @login_required
+    def api_sec_enforcement():
+        from services.external_apis import sec_get_enforcement_actions
+        return jsonify(sec_get_enforcement_actions())
 
     return app
 

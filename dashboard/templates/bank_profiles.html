@@ -3,50 +3,135 @@
 
 {% block content %}
 <div class="container-fluid px-4 py-4">
-    <h2 style="font-weight: 800;" class="mb-4"><i class="fas fa-university me-2"></i>Bank Profiles & Comparison</h2>
-
-    <!-- Loading State -->
-    <div id="loading" class="text-center py-5">
-        <div class="spinner-cw" style="width: 40px; height: 40px; border-width: 3px;"></div>
-        <p class="mt-3" style="color: var(--text-secondary);">Loading bank comparison data...</p>
-    </div>
-
-    <!-- Comparison Chart -->
-    <div class="row g-3 mb-4" id="charts" style="display: none;">
-        <div class="col-md-6">
-            <div class="chart-container" style="min-height: 400px;">
-                <h5><i class="fas fa-sort-amount-down me-2"></i>Complaint Volume by Bank</h5>
-                <canvas id="volumeChart"></canvas>
-            </div>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 style="font-weight: 800;"><i class="fas fa-university me-2"></i>Bank Profiles & Intelligence</h2>
+            <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0;">
+                Multi-source intelligence: CFPB + FDIC + SEC + FINRA
+            </p>
         </div>
-        <div class="col-md-6">
-            <div class="chart-container" style="min-height: 400px;">
-                <h5><i class="fas fa-star me-2"></i>Health Scores</h5>
-                <canvas id="healthChart"></canvas>
-            </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-cw-outline btn-sm" onclick="loadIndustryOverview()">
+                <i class="fas fa-globe me-1"></i>Industry Overview
+            </button>
+            <button class="btn btn-cw-outline btn-sm" onclick="loadFailures()">
+                <i class="fas fa-exclamation-triangle me-1"></i>Bank Failures
+            </button>
         </div>
     </div>
 
-    <!-- Bank Comparison Table -->
-    <div class="card-cw p-4" id="table-card" style="display: none;">
-        <h5 style="font-weight: 700;" class="mb-3"><i class="fas fa-th-list me-2"></i>Bank Performance Comparison</h5>
-        <div class="table-responsive">
+    <!-- Data Source Badges -->
+    <div class="d-flex gap-2 flex-wrap mb-4">
+        <span class="badge" style="background: rgba(99,102,241,0.2); color: var(--accent-indigo-light); padding: 0.4rem 0.8rem; border-radius: 8px;">
+            <i class="fas fa-landmark me-1"></i> CFPB Complaints
+        </span>
+        <span class="badge" style="background: rgba(34,197,94,0.2); color: var(--accent-green); padding: 0.4rem 0.8rem; border-radius: 8px;">
+            <i class="fas fa-university me-1"></i> FDIC Financials
+        </span>
+        <span class="badge" style="background: rgba(6,182,212,0.2); color: var(--accent-cyan); padding: 0.4rem 0.8rem; border-radius: 8px;">
+            <i class="fas fa-chart-bar me-1"></i> SEC EDGAR
+        </span>
+        <span class="badge" style="background: rgba(168,85,247,0.2); color: var(--accent-purple); padding: 0.4rem 0.8rem; border-radius: 8px;">
+            <i class="fas fa-shield-alt me-1"></i> FINRA BrokerCheck
+        </span>
+        <span class="badge" style="background: rgba(245,158,11,0.2); color: var(--accent-amber); padding: 0.4rem 0.8rem; border-radius: 8px;">
+            <i class="fas fa-building me-1"></i> NCUA
+        </span>
+    </div>
+
+    <!-- Internal Bank Comparison -->
+    <div class="card-cw p-4 mb-4" id="comparison-section">
+        <h5 style="font-weight: 700;" class="mb-3"><i class="fas fa-th-list me-2"></i>Bank Performance (Internal Data)</h5>
+        <div id="comparison-loading" class="text-center py-3">
+            <div class="spinner-cw"></div>
+        </div>
+        <div class="table-responsive" id="comparison-table" style="display: none;">
             <table class="table table-cw">
                 <thead>
                     <tr>
                         <th>Rank</th>
                         <th>Institution</th>
-                        <th>Total Complaints</th>
-                        <th>Resolution Rate</th>
+                        <th>Complaints</th>
+                        <th>Resolution</th>
                         <th>Monetary Relief</th>
-                        <th>Timely Response</th>
-                        <th>Health Score</th>
+                        <th>Timely</th>
+                        <th>Health</th>
                         <th>Grade</th>
+                        <th>Deep Dive</th>
                     </tr>
                 </thead>
                 <tbody id="bankTableBody"></tbody>
             </table>
         </div>
+    </div>
+
+    <!-- Deep Dive Panel (hidden by default) -->
+    <div id="deep-dive-panel" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 style="font-weight: 800;" id="deep-dive-title">Loading...</h4>
+            <button class="btn btn-cw-outline btn-sm" onclick="closeDeepDive()">
+                <i class="fas fa-times me-1"></i>Close
+            </button>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <!-- CFPB Data -->
+            <div class="col-md-6">
+                <div class="card-cw p-4 h-100">
+                    <h5 style="font-weight: 700;"><i class="fas fa-landmark me-2" style="color: var(--accent-indigo-light);"></i>CFPB Complaints</h5>
+                    <div id="dd-cfpb"><div class="spinner-cw"></div></div>
+                </div>
+            </div>
+            <!-- FDIC Data -->
+            <div class="col-md-6">
+                <div class="card-cw p-4 h-100">
+                    <h5 style="font-weight: 700;"><i class="fas fa-university me-2" style="color: var(--accent-green);"></i>FDIC Financials</h5>
+                    <div id="dd-fdic"><div class="spinner-cw"></div></div>
+                </div>
+            </div>
+            <!-- FINRA Data -->
+            <div class="col-md-6">
+                <div class="card-cw p-4 h-100">
+                    <h5 style="font-weight: 700;"><i class="fas fa-shield-alt me-2" style="color: var(--accent-purple);"></i>FINRA BrokerCheck</h5>
+                    <div id="dd-finra"><div class="spinner-cw"></div></div>
+                </div>
+            </div>
+            <!-- SEC Data -->
+            <div class="col-md-6">
+                <div class="card-cw p-4 h-100">
+                    <h5 style="font-weight: 700;"><i class="fas fa-chart-bar me-2" style="color: var(--accent-cyan);"></i>SEC EDGAR Filings</h5>
+                    <div id="dd-sec"><div class="spinner-cw"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FDIC Financial History Chart -->
+        <div class="card-cw p-4 mb-4" id="dd-history-card" style="display: none;">
+            <h5 style="font-weight: 700;"><i class="fas fa-chart-line me-2"></i>Financial History (FDIC)</h5>
+            <div style="height: 300px;"><canvas id="historyChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- Industry Overview Panel (hidden) -->
+    <div id="industry-panel" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 style="font-weight: 800;"><i class="fas fa-globe me-2"></i>Industry Overview</h4>
+            <button class="btn btn-cw-outline btn-sm" onclick="document.getElementById('industry-panel').style.display='none'">
+                <i class="fas fa-times me-1"></i>Close
+            </button>
+        </div>
+        <div id="industry-content"><div class="text-center py-3"><div class="spinner-cw"></div></div></div>
+    </div>
+
+    <!-- Failures Panel (hidden) -->
+    <div id="failures-panel" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 style="font-weight: 800;"><i class="fas fa-exclamation-triangle me-2" style="color: var(--accent-red);"></i>Recent Bank Failures (FDIC)</h4>
+            <button class="btn btn-cw-outline btn-sm" onclick="document.getElementById('failures-panel').style.display='none'">
+                <i class="fas fa-times me-1"></i>Close
+            </button>
+        </div>
+        <div id="failures-content"><div class="text-center py-3"><div class="spinner-cw"></div></div></div>
     </div>
 </div>
 {% endblock %}
@@ -54,93 +139,275 @@
 {% block scripts %}
 <script>
 const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16'];
+const gradeColors = {A:'var(--accent-green)',B:'var(--accent-cyan)',C:'var(--accent-amber)',D:'var(--accent-orange)',F:'var(--accent-red)'};
+let historyChart;
 
-async function loadBanks() {
+function fmt(n) { return n ? Number(n).toLocaleString() : '0'; }
+function fmtM(n) { return n ? '$' + (n/1000).toFixed(1) + 'B' : 'N/A'; }
+
+async function loadComparison() {
     const res = await fetch('/api/bank-comparison');
     const data = await res.json();
+    document.getElementById('comparison-loading').style.display = 'none';
+    document.getElementById('comparison-table').style.display = 'block';
 
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('charts').style.display = 'flex';
-    document.getElementById('table-card').style.display = 'block';
-
-    const top10 = data.slice(0, 10);
-
-    // Volume chart
-    new Chart(document.getElementById('volumeChart').getContext('2d'), {
-        type: 'bar',
-        data: {
-            labels: top10.map(d => d.company.length > 25 ? d.company.substring(0, 25) + '...' : d.company),
-            datasets: [{
-                label: 'Complaints',
-                data: top10.map(d => d.total_complaints),
-                backgroundColor: COLORS.map(c => c + '99'),
-                borderColor: COLORS,
-                borderWidth: 1,
-                borderRadius: 6,
-            }]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } },
-                y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } }
-            }
-        }
-    });
-
-    // Health chart
-    const sorted = [...data].sort((a, b) => b.health_score - a.health_score).slice(0, 10);
-    new Chart(document.getElementById('healthChart').getContext('2d'), {
-        type: 'bar',
-        data: {
-            labels: sorted.map(d => d.company.length > 25 ? d.company.substring(0, 25) + '...' : d.company),
-            datasets: [{
-                label: 'Health Score',
-                data: sorted.map(d => d.health_score),
-                backgroundColor: sorted.map(d => {
-                    if (d.health_score >= 80) return '#22c55e99';
-                    if (d.health_score >= 65) return '#06b6d499';
-                    if (d.health_score >= 50) return '#f59e0b99';
-                    return '#ef444499';
-                }),
-                borderRadius: 6,
-            }]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' }, max: 100 },
-                y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } }
-            }
-        }
-    });
-
-    // Table
-    const gradeColors = { A: 'var(--accent-green)', B: 'var(--accent-cyan)', C: 'var(--accent-amber)', D: 'var(--accent-orange)', F: 'var(--accent-red)' };
     document.getElementById('bankTableBody').innerHTML = data.map((d, i) => `
         <tr>
-            <td style="color: var(--text-muted); font-weight: 600;">${i + 1}</td>
+            <td style="color: var(--text-muted); font-weight: 600;">${i+1}</td>
             <td style="font-weight: 600;">${d.company}</td>
-            <td>${d.total_complaints.toLocaleString()}</td>
-            <td>
-                <span style="color: ${d.resolution_rate > 90 ? 'var(--accent-green)' : d.resolution_rate > 70 ? 'var(--accent-amber)' : 'var(--accent-red)'}; font-weight: 600;">
-                    ${d.resolution_rate}%
-                </span>
-            </td>
+            <td>${fmt(d.total_complaints)}</td>
+            <td><span style="color: ${d.resolution_rate > 90 ? 'var(--accent-green)' : 'var(--accent-amber)'}; font-weight: 600;">${d.resolution_rate}%</span></td>
             <td>${d.monetary_relief_rate}%</td>
             <td>${d.timely_rate}%</td>
             <td style="font-weight: 700;">${d.health_score}</td>
-            <td>
-                <span style="color: ${gradeColors[d.health_grade] || 'var(--text-muted)'}; font-weight: 800; font-size: 1.1rem;">
-                    ${d.health_grade}
-                </span>
-            </td>
+            <td><span style="color: ${gradeColors[d.health_grade]||'var(--text-muted)'}; font-weight: 800; font-size: 1.1rem;">${d.health_grade}</span></td>
+            <td><button class="btn btn-sm btn-cw" style="padding: 0.2rem 0.6rem; font-size: 0.75rem;" onclick="loadDeepDive('${d.company.replace(/'/g,"\\'")}')"><i class="fas fa-search me-1"></i>Analyze</button></td>
         </tr>
     `).join('');
 }
 
-loadBanks();
+async function loadDeepDive(bankName) {
+    document.getElementById('deep-dive-panel').style.display = 'block';
+    document.getElementById('deep-dive-title').textContent = bankName + ' — Multi-Source Intelligence';
+    document.getElementById('dd-cfpb').innerHTML = '<div class="spinner-cw"></div> Loading CFPB data...';
+    document.getElementById('dd-fdic').innerHTML = '<div class="spinner-cw"></div> Loading FDIC data...';
+    document.getElementById('dd-finra').innerHTML = '<div class="spinner-cw"></div> Loading FINRA data...';
+    document.getElementById('dd-sec').innerHTML = '<div class="spinner-cw"></div> Loading SEC data...';
+
+    // Scroll to it
+    document.getElementById('deep-dive-panel').scrollIntoView({behavior: 'smooth'});
+
+    try {
+        const res = await fetch('/api/external/bank-profile/' + encodeURIComponent(bankName));
+        const data = await res.json();
+
+        // CFPB section
+        const cfpb = data.sources.cfpb;
+        if (cfpb) {
+            document.getElementById('dd-cfpb').innerHTML = `
+                <div class="kpi-card p-2 mb-2"><div class="accent-bar accent-indigo"></div>
+                    <div class="ps-3"><div class="kpi-value" style="font-size: 1.5rem; color: var(--accent-indigo-light);">${fmt(cfpb.total_complaints)}</div>
+                    <div class="kpi-label">Total Complaints (since 2023)</div></div>
+                </div>
+                <div class="mt-2" style="font-size: 0.85rem;">
+                    <strong>Top Products:</strong>
+                    ${cfpb.top_products.map(p => `<div class="d-flex justify-content-between"><span style="color: var(--text-secondary);">${p.name}</span><span>${fmt(p.count)}</span></div>`).join('')}
+                </div>
+                <div class="mt-2" style="font-size: 0.85rem;">
+                    <strong>Top Issues:</strong>
+                    ${cfpb.top_issues.map(p => `<div class="d-flex justify-content-between"><span style="color: var(--text-secondary);">${p.name.substring(0,40)}</span><span>${fmt(p.count)}</span></div>`).join('')}
+                </div>
+            `;
+        } else {
+            document.getElementById('dd-cfpb').innerHTML = '<span style="color: var(--text-muted);">No CFPB data found</span>';
+        }
+
+        // FDIC section
+        const fdic = data.sources.fdic;
+        if (fdic) {
+            document.getElementById('dd-fdic').innerHTML = `
+                <div class="row g-2 mb-2">
+                    <div class="col-6"><div class="kpi-card p-2"><div class="accent-bar accent-green"></div><div class="ps-3">
+                        <div class="kpi-value" style="font-size: 1.2rem; color: var(--accent-green);">${fmtM(fdic.total_assets)}</div>
+                        <div class="kpi-label">Total Assets</div>
+                    </div></div></div>
+                    <div class="col-6"><div class="kpi-card p-2"><div class="accent-bar accent-cyan"></div><div class="ps-3">
+                        <div class="kpi-value" style="font-size: 1.2rem; color: var(--accent-cyan);">${fmtM(fdic.total_deposits)}</div>
+                        <div class="kpi-label">Total Deposits</div>
+                    </div></div></div>
+                </div>
+                <div style="font-size: 0.85rem;">
+                    <div class="d-flex justify-content-between mb-1"><span>Net Income</span><span style="color: ${fdic.net_income > 0 ? 'var(--accent-green)' : 'var(--accent-red)'};">${fmtM(fdic.net_income)}</span></div>
+                    <div class="d-flex justify-content-between mb-1"><span>ROA</span><span>${fdic.roa}%</span></div>
+                    <div class="d-flex justify-content-between mb-1"><span>ROE</span><span>${fdic.roe}%</span></div>
+                    <div class="d-flex justify-content-between mb-1"><span>Offices</span><span>${fmt(fdic.offices)}</span></div>
+                    <div class="d-flex justify-content-between"><span>FDIC Cert #</span><span>${fdic.cert}</span></div>
+                </div>
+            `;
+
+            // Load history chart
+            if (fdic.history && fdic.history.length > 1) {
+                document.getElementById('dd-history-card').style.display = 'block';
+                const ctx = document.getElementById('historyChart').getContext('2d');
+                if (historyChart) historyChart.destroy();
+                const hist = fdic.history.reverse();
+                historyChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: hist.map(h => h.report_date),
+                        datasets: [
+                            { label: 'Total Assets ($B)', data: hist.map(h => h.total_assets/1000), borderColor: '#22c55e', tension: 0.3, yAxisID: 'y' },
+                            { label: 'ROA %', data: hist.map(h => h.roa), borderColor: '#6366f1', tension: 0.3, yAxisID: 'y1' },
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#8b8fa3' } } },
+                        scales: {
+                            x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } },
+                            y: { position: 'left', grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#22c55e' }, title: { display: true, text: 'Assets ($B)', color: '#22c55e' } },
+                            y1: { position: 'right', grid: { display: false }, ticks: { color: '#6366f1' }, title: { display: true, text: 'ROA %', color: '#6366f1' } },
+                        }
+                    }
+                });
+            }
+        } else {
+            document.getElementById('dd-fdic').innerHTML = '<span style="color: var(--text-muted);">No FDIC data found</span>';
+        }
+
+        // FINRA section
+        const finra = data.sources.finra;
+        if (finra) {
+            document.getElementById('dd-finra').innerHTML = `
+                <div style="font-size: 0.85rem;">
+                    <div class="d-flex justify-content-between mb-2"><span>Firm Name</span><span style="font-weight: 600;">${finra.firm_name}</span></div>
+                    <div class="d-flex justify-content-between mb-2"><span>CRD Number</span><span>${finra.crd_number}</span></div>
+                    <div class="d-flex justify-content-between mb-2"><span>Disclosures</span>
+                        <span style="color: ${finra.disclosure_count > 5 ? 'var(--accent-red)' : finra.disclosure_count > 0 ? 'var(--accent-amber)' : 'var(--accent-green)'}; font-weight: 700;">
+                            ${finra.disclosure_count}
+                        </span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2"><span>Branches</span><span>${fmt(finra.branch_count)}</span></div>
+                    <div class="d-flex justify-content-between"><span>Registered Brokers</span><span>${fmt(finra.broker_count)}</span></div>
+                </div>
+            `;
+        } else {
+            document.getElementById('dd-finra').innerHTML = '<span style="color: var(--text-muted);">No FINRA data found</span>';
+        }
+
+        // SEC section
+        const sec = data.sources.sec;
+        if (sec && sec.recent_filings && sec.recent_filings.length > 0) {
+            document.getElementById('dd-sec').innerHTML = `
+                <div style="font-size: 0.85rem;">
+                    <strong>Recent Filings:</strong>
+                    ${sec.recent_filings.map(f => `
+                        <div class="d-flex justify-content-between mt-1" style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.3rem;">
+                            <span>${f.form_type} — ${f.company.substring(0,30)}</span>
+                            <span style="color: var(--text-muted);">${f.filed_at}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        } else {
+            document.getElementById('dd-sec').innerHTML = '<span style="color: var(--text-muted);">No SEC filings found</span>';
+        }
+
+    } catch (err) {
+        ['dd-cfpb','dd-fdic','dd-finra','dd-sec'].forEach(id => {
+            document.getElementById(id).innerHTML = `<span style="color: var(--accent-red);">Error: ${err.message}</span>`;
+        });
+    }
+}
+
+function closeDeepDive() {
+    document.getElementById('deep-dive-panel').style.display = 'none';
+    document.getElementById('dd-history-card').style.display = 'none';
+}
+
+async function loadIndustryOverview() {
+    const panel = document.getElementById('industry-panel');
+    panel.style.display = 'block';
+    document.getElementById('industry-content').innerHTML = '<div class="text-center py-3"><div class="spinner-cw"></div> Loading industry overview from CFPB + FDIC...</div>';
+    panel.scrollIntoView({behavior: 'smooth'});
+
+    try {
+        const res = await fetch('/api/external/industry-overview');
+        const data = await res.json();
+
+        let html = '<div class="row g-3">';
+
+        // Top companies by complaints
+        if (data.cfpb && data.cfpb.top_companies) {
+            html += `<div class="col-md-6"><div class="card-cw p-3">
+                <h6 style="font-weight: 700;"><i class="fas fa-landmark me-2" style="color: var(--accent-indigo-light);"></i>Top Companies by Complaints (CFPB)</h6>
+                <div style="font-size: 0.8rem; max-height: 300px; overflow-y: auto;">
+                    ${data.cfpb.top_companies.map((c,i) => `
+                        <div class="d-flex justify-content-between py-1" style="border-bottom: 1px solid var(--border-color);">
+                            <span>${i+1}. ${c.name.substring(0,35)}</span><span style="font-weight: 600;">${fmt(c.count)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div></div>`;
+        }
+
+        // Top banks by assets
+        if (data.fdic_top_banks) {
+            html += `<div class="col-md-6"><div class="card-cw p-3">
+                <h6 style="font-weight: 700;"><i class="fas fa-university me-2" style="color: var(--accent-green);"></i>Largest Banks by Assets (FDIC)</h6>
+                <div style="font-size: 0.8rem; max-height: 300px; overflow-y: auto;">
+                    ${data.fdic_top_banks.map((b,i) => `
+                        <div class="d-flex justify-content-between py-1" style="border-bottom: 1px solid var(--border-color);">
+                            <span>${i+1}. ${b.name.substring(0,30)}</span><span style="font-weight: 600;">${fmtM(b.total_assets)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div></div>`;
+        }
+
+        // Products breakdown
+        if (data.cfpb && data.cfpb.top_products) {
+            html += `<div class="col-md-6"><div class="card-cw p-3">
+                <h6 style="font-weight: 700;"><i class="fas fa-boxes-stacked me-2" style="color: var(--accent-amber);"></i>Complaints by Product</h6>
+                <div style="font-size: 0.8rem;">
+                    ${data.cfpb.top_products.map(p => `
+                        <div class="d-flex justify-content-between py-1"><span>${p.name}</span><span style="font-weight: 600;">${fmt(p.count)}</span></div>
+                    `).join('')}
+                </div>
+            </div></div>`;
+        }
+
+        // Recent failures
+        if (data.fdic_failures && data.fdic_failures.length > 0) {
+            html += `<div class="col-md-6"><div class="card-cw p-3">
+                <h6 style="font-weight: 700;"><i class="fas fa-exclamation-triangle me-2" style="color: var(--accent-red);"></i>Recent Bank Failures</h6>
+                <div style="font-size: 0.8rem; max-height: 300px; overflow-y: auto;">
+                    ${data.fdic_failures.map(f => `
+                        <div class="py-1" style="border-bottom: 1px solid var(--border-color);">
+                            <div class="d-flex justify-content-between"><span style="font-weight: 600;">${f.name}</span><span style="color: var(--accent-red);">${f.fail_date}</span></div>
+                            <div style="color: var(--text-muted);">${f.city}, ${f.state} — Assets: ${fmtM(f.total_assets)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div></div>`;
+        }
+
+        html += '</div>';
+        document.getElementById('industry-content').innerHTML = html;
+    } catch (err) {
+        document.getElementById('industry-content').innerHTML = `<span style="color: var(--accent-red);">Error: ${err.message}</span>`;
+    }
+}
+
+async function loadFailures() {
+    const panel = document.getElementById('failures-panel');
+    panel.style.display = 'block';
+    document.getElementById('failures-content').innerHTML = '<div class="text-center py-3"><div class="spinner-cw"></div></div>';
+    panel.scrollIntoView({behavior: 'smooth'});
+
+    try {
+        const res = await fetch('/api/external/fdic/failures');
+        const data = await res.json();
+        document.getElementById('failures-content').innerHTML = `
+            <div class="table-responsive"><table class="table table-cw">
+                <thead><tr><th>Bank</th><th>City</th><th>State</th><th>Failure Date</th><th>Acquirer</th><th>Assets</th><th>Deposits</th></tr></thead>
+                <tbody>
+                    ${data.map(f => `<tr>
+                        <td style="font-weight: 600;">${f.name}</td>
+                        <td>${f.city}</td><td>${f.state}</td>
+                        <td style="color: var(--accent-red);">${f.fail_date}</td>
+                        <td>${f.acquiring_institution || 'N/A'}</td>
+                        <td>${fmtM(f.total_assets)}</td>
+                        <td>${fmtM(f.total_deposits)}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table></div>
+        `;
+    } catch (err) {
+        document.getElementById('failures-content').innerHTML = `<span style="color: var(--accent-red);">Error: ${err.message}</span>`;
+    }
+}
+
+loadComparison();
 </script>
 {% endblock %}
