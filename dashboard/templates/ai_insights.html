@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}AI Insights - ComplaintsWhoo{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 style="font-weight: 800;"><i class="fas fa-robot me-2"></i>AI-Powered Insights</h2>
+            <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0;">Automated analysis powered by Groq AI</p>
+        </div>
+        <div class="d-flex gap-2">
+            <select id="companyFilter" class="form-select-cw" style="width: 250px;">
+                <option value="">All Companies</option>
+            </select>
+            <button class="btn btn-cw" onclick="generateAll()" id="generateBtn">
+                <i class="fas fa-magic me-2"></i>Generate All Insights
+            </button>
+        </div>
+    </div>
+
+    <!-- AI Sections -->
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="ai-card" id="card-executive_summary">
+                <div class="ai-header">
+                    <i class="fas fa-file-alt" style="color: var(--accent-indigo-light);"></i>
+                    Executive Summary
+                    <button class="btn btn-sm btn-cw-outline ms-auto" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" onclick="generateSection('executive_summary')">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <div class="ai-content" id="content-executive_summary">
+                    <span style="color: var(--text-muted);">Click "Generate All Insights" or the refresh button to generate this analysis.</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="ai-card" id="card-trend_analysis">
+                <div class="ai-header">
+                    <i class="fas fa-chart-line" style="color: var(--accent-cyan);"></i>
+                    Trend Analysis
+                    <button class="btn btn-sm btn-cw-outline ms-auto" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" onclick="generateSection('trend_analysis')">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <div class="ai-content" id="content-trend_analysis">
+                    <span style="color: var(--text-muted);">Click "Generate All Insights" or the refresh button to generate this analysis.</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="ai-card" id="card-anomaly_detection">
+                <div class="ai-header">
+                    <i class="fas fa-exclamation-triangle" style="color: var(--accent-amber);"></i>
+                    Anomaly Detection
+                    <span class="badge-premium ms-2">PRO</span>
+                    <button class="btn btn-sm btn-cw-outline ms-auto" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" onclick="generateSection('anomaly_detection')">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <div class="ai-content" id="content-anomaly_detection">
+                    <span style="color: var(--text-muted);">Click "Generate All Insights" or the refresh button to generate this analysis.</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="ai-card" id="card-sentiment_analysis">
+                <div class="ai-header">
+                    <i class="fas fa-comment-dots" style="color: var(--accent-purple);"></i>
+                    Sentiment Analysis
+                    <span class="badge-premium ms-2">PRO</span>
+                    <button class="btn btn-sm btn-cw-outline ms-auto" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" onclick="generateSection('sentiment_analysis')">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <div class="ai-content" id="content-sentiment_analysis">
+                    <span style="color: var(--text-muted);">Click "Generate All Insights" or the refresh button to generate this analysis.</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-12">
+            <div class="ai-card" id="card-recommendations">
+                <div class="ai-header">
+                    <i class="fas fa-lightbulb" style="color: var(--accent-green);"></i>
+                    Recommendations
+                    <span class="badge-premium ms-2">PRO</span>
+                    <button class="btn btn-sm btn-cw-outline ms-auto" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" onclick="generateSection('recommendations')">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <div class="ai-content" id="content-recommendations">
+                    <span style="color: var(--text-muted);">Click "Generate All Insights" or the refresh button to generate this analysis.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadCompanies() {
+    const res = await fetch('/api/companies');
+    const data = await res.json();
+    const sel = document.getElementById('companyFilter');
+    data.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.company;
+        opt.textContent = `${c.company} (${c.count.toLocaleString()})`;
+        sel.appendChild(opt);
+    });
+}
+
+function formatAIContent(text) {
+    // Basic markdown-like formatting
+    return text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/^### (.*$)/gm, '<h6 style="color: var(--text-primary); font-weight: 700; margin-top: 1rem;">$1</h6>')
+        .replace(/^## (.*$)/gm, '<h5 style="color: var(--text-primary); font-weight: 700; margin-top: 1rem;">$1</h5>')
+        .replace(/^- (.*$)/gm, '<div style="padding-left: 1rem;">&#x2022; $1</div>')
+        .replace(/^\d+\. (.*$)/gm, '<div style="padding-left: 1rem;">$&</div>')
+        .replace(/RED FLAG/g, '<span style="color: var(--accent-red); font-weight: 700;">RED FLAG</span>')
+        .replace(/AMBER FLAG/g, '<span style="color: var(--accent-amber); font-weight: 700;">AMBER FLAG</span>')
+        .replace(/WATCH/g, '<span style="color: var(--accent-cyan); font-weight: 700;">WATCH</span>');
+}
+
+async function generateSection(section) {
+    const content = document.getElementById('content-' + section);
+    content.innerHTML = '<div class="d-flex align-items-center gap-2"><span class="spinner-cw"></span> Generating analysis...</div>';
+
+    const company = document.getElementById('companyFilter').value;
+    try {
+        const res = await fetch('/api/ai/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({section, company: company || null})
+        });
+        const data = await res.json();
+        if (data.content) {
+            content.innerHTML = formatAIContent(data.content);
+            if (data.cached) {
+                content.innerHTML += '<div style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-muted);"><i class="fas fa-database me-1"></i>Cached result</div>';
+            }
+        } else if (data.error) {
+            content.innerHTML = `<span style="color: var(--accent-red);">${data.error}</span>`;
+        }
+    } catch (err) {
+        content.innerHTML = `<span style="color: var(--accent-red);">Error: ${err.message}</span>`;
+    }
+}
+
+async function generateAll() {
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-cw me-2"></span>Generating...';
+
+    const sections = ['executive_summary', 'trend_analysis', 'anomaly_detection', 'sentiment_analysis', 'recommendations'];
+    for (const s of sections) {
+        document.getElementById('content-' + s).innerHTML = '<div class="d-flex align-items-center gap-2"><span class="spinner-cw"></span> Queued...</div>';
+    }
+
+    const company = document.getElementById('companyFilter').value;
+    try {
+        const res = await fetch('/api/ai/all-sections', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({company: company || null})
+        });
+        const data = await res.json();
+        for (const s of sections) {
+            const content = document.getElementById('content-' + s);
+            if (data[s] && data[s].content) {
+                content.innerHTML = formatAIContent(data[s].content);
+            } else if (data[s] && data[s].error) {
+                content.innerHTML = `<span style="color: var(--accent-red);">${data[s].error}</span>`;
+            }
+        }
+    } catch (err) {
+        sections.forEach(s => {
+            document.getElementById('content-' + s).innerHTML = `<span style="color: var(--accent-red);">Error: ${err.message}</span>`;
+        });
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-magic me-2"></i>Generate All Insights';
+}
+
+loadCompanies();
+</script>
+{% endblock %}

@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - ComplaintsWhoo{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <!-- Header with Company Filter -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 style="font-weight: 800;"><i class="fas fa-chart-line me-2"></i>Overview Dashboard</h2>
+        <select id="companyFilter" class="form-select-cw" style="width: 280px;" onchange="loadAll()">
+            <option value="">All Companies</option>
+        </select>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="row g-3 mb-4" id="kpi-row">
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-indigo"></div>
+                <div class="ps-3">
+                    <div class="kpi-value" id="kpi-total" style="color: var(--accent-indigo-light);">--</div>
+                    <div class="kpi-label">Total Complaints</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-green"></div>
+                <div class="ps-3">
+                    <div class="kpi-value" id="kpi-resolution" style="color: var(--accent-green);">--</div>
+                    <div class="kpi-label">Resolution Rate</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-cyan"></div>
+                <div class="ps-3">
+                    <div class="kpi-value" id="kpi-monetary" style="color: var(--accent-cyan);">--</div>
+                    <div class="kpi-label">Monetary Relief</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-amber"></div>
+                <div class="ps-3">
+                    <div class="kpi-value" id="kpi-timely" style="color: var(--accent-amber);">--</div>
+                    <div class="kpi-label">Timely Response</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-red"></div>
+                <div class="ps-3">
+                    <div class="kpi-value" id="kpi-progress" style="color: var(--accent-red);">--</div>
+                    <div class="kpi-label">In Progress</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-purple"></div>
+                <div class="ps-3">
+                    <div class="kpi-value" id="kpi-narrative" style="color: var(--accent-purple);">--</div>
+                    <div class="kpi-label">With Narrative</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Health Score + Monthly Trend -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="chart-container text-center" style="min-height: 300px;">
+                <h5><i class="fas fa-heartbeat me-2"></i>Health Score</h5>
+                <div id="health-display" class="mt-4">
+                    <div class="spinner-cw"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-9">
+            <div class="chart-container" style="min-height: 300px;">
+                <h5><i class="fas fa-chart-area me-2"></i>Monthly Complaint Trend</h5>
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Response Breakdown + Product Breakdown -->
+    <div class="row g-3">
+        <div class="col-md-5">
+            <div class="chart-container" style="min-height: 350px;">
+                <h5><i class="fas fa-chart-pie me-2"></i>Response Breakdown</h5>
+                <canvas id="responseChart"></canvas>
+            </div>
+        </div>
+        <div class="col-md-7">
+            <div class="chart-container" style="min-height: 350px;">
+                <h5><i class="fas fa-boxes-stacked me-2"></i>Product Categories</h5>
+                <canvas id="productChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16'];
+let trendChart, responseChart, productChart;
+
+function getCompany() {
+    return document.getElementById('companyFilter').value;
+}
+
+function qs(params) {
+    const c = getCompany();
+    if (c) params.company = c;
+    return '?' + new URLSearchParams(params).toString();
+}
+
+async function loadCompanies() {
+    const res = await fetch('/api/companies');
+    const data = await res.json();
+    const sel = document.getElementById('companyFilter');
+    data.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.company;
+        opt.textContent = `${c.company} (${c.count.toLocaleString()})`;
+        sel.appendChild(opt);
+    });
+}
+
+async function loadKPIs() {
+    const res = await fetch('/api/kpis' + qs({}));
+    const d = await res.json();
+    document.getElementById('kpi-total').textContent = d.total.toLocaleString();
+    document.getElementById('kpi-resolution').textContent = d.resolution_rate + '%';
+    document.getElementById('kpi-monetary').textContent = d.monetary_relief_rate + '%';
+    document.getElementById('kpi-timely').textContent = d.timely_rate + '%';
+    document.getElementById('kpi-progress').textContent = d.in_progress.toLocaleString();
+    document.getElementById('kpi-narrative').textContent = d.with_narrative.toLocaleString();
+}
+
+async function loadHealth() {
+    const res = await fetch('/api/health-score' + qs({}));
+    const d = await res.json();
+    const pct = d.score + '%';
+    const gradeClass = 'health-' + d.grade.toLowerCase();
+    document.getElementById('health-display').innerHTML = `
+        <div class="health-score-ring ${gradeClass}" style="--pct: ${pct}">
+            <div class="health-inner">
+                <div class="grade">${d.grade}</div>
+                <div class="score">${d.score}/100</div>
+            </div>
+        </div>
+        <div class="mt-3" style="font-size: 0.8rem; color: var(--text-secondary);">
+            <div class="d-flex justify-content-between mb-1"><span>Resolution</span><span>${d.components.resolution}%</span></div>
+            <div class="d-flex justify-content-between mb-1"><span>Monetary Relief</span><span>${d.components.monetary_relief}%</span></div>
+            <div class="d-flex justify-content-between mb-1"><span>Timely Response</span><span>${d.components.timely_response}%</span></div>
+            <div class="d-flex justify-content-between"><span>Trend</span><span>${d.components.trend}%</span></div>
+        </div>
+    `;
+}
+
+async function loadTrend() {
+    const res = await fetch('/api/monthly-trend' + qs({}));
+    const data = await res.json();
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.month),
+            datasets: [{
+                label: 'Complaints',
+                data: data.map(d => d.count),
+                borderColor: '#6366f1',
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 3,
+                pointBackgroundColor: '#818cf8',
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3', maxTicksLimit: 12 } },
+                y: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' }, beginAtZero: true }
+            }
+        }
+    });
+}
+
+async function loadResponse() {
+    const res = await fetch('/api/response-breakdown' + qs({}));
+    const data = await res.json();
+    const ctx = document.getElementById('responseChart').getContext('2d');
+    if (responseChart) responseChart.destroy();
+    responseChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(d => d.response),
+            datasets: [{
+                data: data.map(d => d.count),
+                backgroundColor: COLORS,
+                borderWidth: 0,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { color: '#8b8fa3', font: { size: 11 }, padding: 12 } }
+            }
+        }
+    });
+}
+
+async function loadProducts() {
+    const res = await fetch('/api/product-breakdown' + qs({}));
+    const data = await res.json();
+    const ctx = document.getElementById('productChart').getContext('2d');
+    if (productChart) productChart.destroy();
+    productChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.product),
+            datasets: [{
+                label: 'Complaints',
+                data: data.map(d => d.count),
+                backgroundColor: COLORS.map(c => c + '99'),
+                borderColor: COLORS,
+                borderWidth: 1,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } },
+                y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 11 } } }
+            }
+        }
+    });
+}
+
+function loadAll() {
+    loadKPIs();
+    loadHealth();
+    loadTrend();
+    loadResponse();
+    loadProducts();
+}
+
+loadCompanies();
+loadAll();
+</script>
+{% endblock %}

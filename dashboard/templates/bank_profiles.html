@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Bank Profiles - ComplaintsWhoo{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <h2 style="font-weight: 800;" class="mb-4"><i class="fas fa-university me-2"></i>Bank Profiles & Comparison</h2>
+
+    <!-- Loading State -->
+    <div id="loading" class="text-center py-5">
+        <div class="spinner-cw" style="width: 40px; height: 40px; border-width: 3px;"></div>
+        <p class="mt-3" style="color: var(--text-secondary);">Loading bank comparison data...</p>
+    </div>
+
+    <!-- Comparison Chart -->
+    <div class="row g-3 mb-4" id="charts" style="display: none;">
+        <div class="col-md-6">
+            <div class="chart-container" style="min-height: 400px;">
+                <h5><i class="fas fa-sort-amount-down me-2"></i>Complaint Volume by Bank</h5>
+                <canvas id="volumeChart"></canvas>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="chart-container" style="min-height: 400px;">
+                <h5><i class="fas fa-star me-2"></i>Health Scores</h5>
+                <canvas id="healthChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bank Comparison Table -->
+    <div class="card-cw p-4" id="table-card" style="display: none;">
+        <h5 style="font-weight: 700;" class="mb-3"><i class="fas fa-th-list me-2"></i>Bank Performance Comparison</h5>
+        <div class="table-responsive">
+            <table class="table table-cw">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Institution</th>
+                        <th>Total Complaints</th>
+                        <th>Resolution Rate</th>
+                        <th>Monetary Relief</th>
+                        <th>Timely Response</th>
+                        <th>Health Score</th>
+                        <th>Grade</th>
+                    </tr>
+                </thead>
+                <tbody id="bankTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16'];
+
+async function loadBanks() {
+    const res = await fetch('/api/bank-comparison');
+    const data = await res.json();
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('charts').style.display = 'flex';
+    document.getElementById('table-card').style.display = 'block';
+
+    const top10 = data.slice(0, 10);
+
+    // Volume chart
+    new Chart(document.getElementById('volumeChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: top10.map(d => d.company.length > 25 ? d.company.substring(0, 25) + '...' : d.company),
+            datasets: [{
+                label: 'Complaints',
+                data: top10.map(d => d.total_complaints),
+                backgroundColor: COLORS.map(c => c + '99'),
+                borderColor: COLORS,
+                borderWidth: 1,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } },
+                y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } }
+            }
+        }
+    });
+
+    // Health chart
+    const sorted = [...data].sort((a, b) => b.health_score - a.health_score).slice(0, 10);
+    new Chart(document.getElementById('healthChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: sorted.map(d => d.company.length > 25 ? d.company.substring(0, 25) + '...' : d.company),
+            datasets: [{
+                label: 'Health Score',
+                data: sorted.map(d => d.health_score),
+                backgroundColor: sorted.map(d => {
+                    if (d.health_score >= 80) return '#22c55e99';
+                    if (d.health_score >= 65) return '#06b6d499';
+                    if (d.health_score >= 50) return '#f59e0b99';
+                    return '#ef444499';
+                }),
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' }, max: 100 },
+                y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } }
+            }
+        }
+    });
+
+    // Table
+    const gradeColors = { A: 'var(--accent-green)', B: 'var(--accent-cyan)', C: 'var(--accent-amber)', D: 'var(--accent-orange)', F: 'var(--accent-red)' };
+    document.getElementById('bankTableBody').innerHTML = data.map((d, i) => `
+        <tr>
+            <td style="color: var(--text-muted); font-weight: 600;">${i + 1}</td>
+            <td style="font-weight: 600;">${d.company}</td>
+            <td>${d.total_complaints.toLocaleString()}</td>
+            <td>
+                <span style="color: ${d.resolution_rate > 90 ? 'var(--accent-green)' : d.resolution_rate > 70 ? 'var(--accent-amber)' : 'var(--accent-red)'}; font-weight: 600;">
+                    ${d.resolution_rate}%
+                </span>
+            </td>
+            <td>${d.monetary_relief_rate}%</td>
+            <td>${d.timely_rate}%</td>
+            <td style="font-weight: 700;">${d.health_score}</td>
+            <td>
+                <span style="color: ${gradeColors[d.health_grade] || 'var(--text-muted)'}; font-weight: 800; font-size: 1.1rem;">
+                    ${d.health_grade}
+                </span>
+            </td>
+        </tr>
+    `).join('');
+}
+
+loadBanks();
+</script>
+{% endblock %}

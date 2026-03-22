@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Segmentation - ComplaintsWhoo{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 style="font-weight: 800;"><i class="fas fa-layer-group me-2"></i>Segmentation Analysis</h2>
+        <div class="d-flex gap-2">
+            <select id="companyFilter" class="form-select-cw" style="width: 250px;" onchange="loadAll()">
+                <option value="">All Companies</option>
+            </select>
+            <select id="productFilter" class="form-select-cw" style="width: 200px;" onchange="loadIssues()">
+                <option value="">All Products</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Top Issues + Submission Channels -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-8">
+            <div class="chart-container" style="min-height: 400px;">
+                <h5><i class="fas fa-exclamation-circle me-2"></i>Top Issues</h5>
+                <canvas id="issueChart"></canvas>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="chart-container" style="min-height: 400px;">
+                <h5><i class="fas fa-paper-plane me-2"></i>Submission Channels</h5>
+                <canvas id="channelChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tags Analysis + Product Response Cross-tab -->
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="chart-container" style="min-height: 350px;">
+                <h5><i class="fas fa-tags me-2"></i>Consumer Tags</h5>
+                <canvas id="tagsChart"></canvas>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="chart-container" style="min-height: 350px;">
+                <h5><i class="fas fa-th me-2"></i>Product vs. Resolution Type</h5>
+                <canvas id="crosstabChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16'];
+let issueChart, channelChart, tagsChart, crosstabChart;
+
+function getCompany() { return document.getElementById('companyFilter').value; }
+function getProduct() { return document.getElementById('productFilter').value; }
+function qs(extra={}) {
+    const p = {};
+    const c = getCompany(); if (c) p.company = c;
+    Object.assign(p, extra);
+    return '?' + new URLSearchParams(p).toString();
+}
+
+async function loadCompanies() {
+    const res = await fetch('/api/companies');
+    const data = await res.json();
+    const sel = document.getElementById('companyFilter');
+    data.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.company;
+        opt.textContent = `${c.company} (${c.count.toLocaleString()})`;
+        sel.appendChild(opt);
+    });
+}
+
+async function loadProducts() {
+    const res = await fetch('/api/product-breakdown' + qs());
+    const data = await res.json();
+    const sel = document.getElementById('productFilter');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All Products</option>';
+    data.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.product;
+        opt.textContent = `${p.product} (${p.count})`;
+        sel.appendChild(opt);
+    });
+    sel.value = current;
+}
+
+async function loadIssues() {
+    const product = getProduct();
+    const extra = product ? {product} : {};
+    const res = await fetch('/api/issue-breakdown' + qs(extra));
+    const data = await res.json();
+    const ctx = document.getElementById('issueChart').getContext('2d');
+    if (issueChart) issueChart.destroy();
+    issueChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.issue.length > 50 ? d.issue.substring(0, 50) + '...' : d.issue),
+            datasets: [{
+                label: 'Complaints',
+                data: data.map(d => d.count),
+                backgroundColor: COLORS.map(c => c + '99'),
+                borderColor: COLORS,
+                borderWidth: 1,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } },
+                y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+async function loadChannels() {
+    const res = await fetch('/api/submission-channels' + qs());
+    const data = await res.json();
+    const ctx = document.getElementById('channelChart').getContext('2d');
+    if (channelChart) channelChart.destroy();
+    channelChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(d => d.channel),
+            datasets: [{ data: data.map(d => d.count), backgroundColor: COLORS, borderWidth: 0 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#8b8fa3', font: { size: 11 }, padding: 12 } } }
+        }
+    });
+}
+
+async function loadTags() {
+    const res = await fetch('/api/tags-analysis' + qs());
+    const data = await res.json();
+    const ctx = document.getElementById('tagsChart').getContext('2d');
+    if (tagsChart) tagsChart.destroy();
+    if (data.length === 0) {
+        ctx.canvas.parentElement.innerHTML += '<p class="text-center mt-4" style="color: var(--text-muted);">No tag data available</p>';
+        return;
+    }
+    tagsChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.tag),
+            datasets: [{ data: data.map(d => d.count), backgroundColor: ['#f59e0b99','#06b6d499','#a855f799','#ef444499'], borderRadius: 6 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 10 } } },
+                y: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } }
+            }
+        }
+    });
+}
+
+async function loadCrosstab() {
+    const res = await fetch('/api/product-response-crosstab' + qs());
+    const data = await res.json();
+    const products = Object.keys(data.products);
+    const responses = data.responses;
+    const datasets = responses.map((r, i) => ({
+        label: r,
+        data: products.map(p => data.products[p][r] || 0),
+        backgroundColor: COLORS[i % COLORS.length] + '99',
+        borderColor: COLORS[i % COLORS.length],
+        borderWidth: 1,
+    }));
+    const ctx = document.getElementById('crosstabChart').getContext('2d');
+    if (crosstabChart) crosstabChart.destroy();
+    crosstabChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: products, datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'top', labels: { color: '#8b8fa3', font: { size: 10 }, padding: 8 } } },
+            scales: {
+                x: { stacked: true, grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 9 }, maxRotation: 45 } },
+                y: { stacked: true, grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } }
+            }
+        }
+    });
+}
+
+function loadAll() {
+    loadProducts();
+    loadIssues();
+    loadChannels();
+    loadTags();
+    loadCrosstab();
+}
+
+loadCompanies();
+loadAll();
+</script>
+{% endblock %}

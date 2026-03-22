@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Pricing - ComplaintsWhoo{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="text-center mb-5">
+        <h2 style="font-weight: 800; font-size: 2.5rem;">Simple, Transparent Pricing</h2>
+        <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto;">
+            Start free for 30 days. Upgrade when you're ready for the full power of complaints intelligence.
+        </p>
+    </div>
+
+    <div class="row g-4 justify-content-center">
+        <!-- Free Trial -->
+        <div class="col-md-5">
+            <div class="pricing-card h-100">
+                <div style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;">Free Trial</div>
+                <div class="price mt-2" style="color: var(--text-primary);">$0</div>
+                <div class="period mb-4">for 30 days</div>
+                <ul class="list-unstyled text-start" style="font-size: 0.9rem; color: var(--text-secondary);">
+                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Overview Dashboard</li>
+                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Segmentation Analysis</li>
+                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Geographic Breakdown</li>
+                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Top 3 Bank Profiles</li>
+                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i>1 AI Insight per Day</li>
+                    <li class="mb-2" style="color: var(--text-muted);"><i class="fas fa-times me-2" style="color: var(--accent-red);"></i>Data Export</li>
+                    <li class="mb-2" style="color: var(--text-muted);"><i class="fas fa-times me-2" style="color: var(--accent-red);"></i>API Access</li>
+                    <li class="mb-2" style="color: var(--text-muted);"><i class="fas fa-times me-2" style="color: var(--accent-red);"></i>Advanced Analytics</li>
+                </ul>
+                {% if not current_user %}
+                <a href="{{ url_for('register') }}" class="btn btn-cw-outline w-100 mt-4">Start Free Trial</a>
+                {% elif current_user.subscription_status == 'trial' %}
+                <button class="btn btn-cw-outline w-100 mt-4" disabled>Current Plan</button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Premium -->
+        <div class="col-md-5">
+            <div class="pricing-card featured h-100">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div style="font-size: 0.85rem; color: var(--accent-indigo-light); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;">Premium</div>
+                    <span class="badge-premium">Most Popular</span>
+                </div>
+                <div class="price mt-2" style="color: var(--accent-indigo-light);">$29</div>
+                <div class="period mb-4">per month</div>
+                <ul class="list-unstyled text-start" style="font-size: 0.9rem; color: var(--text-secondary);">
+                    <li class="mb-2"><i class="fas fa-check me-2" style="color: var(--accent-indigo-light);"></i>Everything in Free Trial</li>
+                    <li class="mb-2"><i class="fas fa-check me-2" style="color: var(--accent-indigo-light);"></i>Unlimited AI Insights</li>
+                    <li class="mb-2"><i class="fas fa-check me-2" style="color: var(--accent-indigo-light);"></i>All Bank Profiles</li>
+                    <li class="mb-2"><i class="fas fa-check me-2" style="color: var(--accent-indigo-light);"></i>Advanced Analytics</li>
+                    <li class="mb-2"><i class="fas fa-check me-2" style="color: var(--accent-indigo-light);"></i>Data Export (CSV, PDF)</li>
+                    <li class="mb-2"><i class="fas fa-check me-2" style="color: var(--accent-indigo-light);"></i>API Access</li>
+                    <li class="mb-2"><i class="fas fa-check me-2" style="color: var(--accent-indigo-light);"></i>Priority Support</li>
+                    <li class="mb-2"><i class="fas fa-check me-2" style="color: var(--accent-indigo-light);"></i>Custom Alerts</li>
+                </ul>
+                <button class="btn btn-cw w-100 mt-4" onclick="startCheckout()">
+                    <i class="fas fa-crown me-2"></i>Upgrade to Premium
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function startCheckout() {
+    fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            // Stripe not configured yet - show coming soon
+            const modal = document.createElement('div');
+            modal.innerHTML = `
+                <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; align-items: center; justify-content: center;" onclick="this.remove()">
+                    <div class="card-cw p-4" style="max-width: 400px; text-align: center;" onclick="event.stopPropagation()">
+                        <div style="font-size: 3rem;">&#x1F989;</div>
+                        <h3 style="font-weight: 800; margin: 1rem 0;">Coming Soon!</h3>
+                        <p style="color: var(--text-secondary);">${data.message || 'Premium subscriptions will be available shortly. Enjoy your free trial!'}</p>
+                        <button class="btn btn-cw mt-2" onclick="this.closest('div[style*=fixed]').remove()">Got It</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        } else if (data.url) {
+            window.location.href = data.url;
+        }
+    });
+}
+</script>
+{% endblock %}

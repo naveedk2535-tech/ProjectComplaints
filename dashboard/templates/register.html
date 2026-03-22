@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Start Free Trial - ComplaintsWhoo{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="text-center mb-3" style="font-size: 3rem;">&#x1F989;</div>
+        <h2>Start Free Trial</h2>
+        <p class="auth-subtitle">30 days of full access. No credit card required.</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert-cw">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form method="POST">
+            <div class="mb-3">
+                <label class="form-label" style="font-size: 0.85rem; color: var(--text-secondary);">Full Name</label>
+                <input type="text" name="name" class="form-control form-control-cw" placeholder="Your name" required autofocus>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" style="font-size: 0.85rem; color: var(--text-secondary);">Email Address</label>
+                <input type="email" name="email" class="form-control form-control-cw" placeholder="you@example.com" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" style="font-size: 0.85rem; color: var(--text-secondary);">Password</label>
+                <input type="password" name="password" class="form-control form-control-cw" placeholder="Min 6 characters" required minlength="6">
+            </div>
+            <div class="mb-4">
+                <label class="form-label" style="font-size: 0.85rem; color: var(--text-secondary);">Confirm Password</label>
+                <input type="password" name="confirm_password" class="form-control form-control-cw" placeholder="Confirm password" required>
+            </div>
+            <button type="submit" class="btn btn-cw w-100 mb-3">
+                <i class="fas fa-rocket me-2"></i>Create Account & Start Trial
+            </button>
+        </form>
+        <div class="text-center" style="font-size: 0.9rem;">
+            <span style="color: var(--text-muted);">Already have an account?</span>
+            <a href="{{ url_for('login') }}" style="color: var(--accent-indigo-light); text-decoration: none; font-weight: 600;"> Log In</a>
+        </div>
+        <div class="text-center mt-3" style="font-size: 0.75rem; color: var(--text-muted);">
+            <i class="fas fa-shield-alt me-1"></i> Your data is secure. We never share your information.
+        </div>
+    </div>
+</div>
+{% endblock %}

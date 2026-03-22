@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Geographic Analysis - ComplaintsWhoo{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 style="font-weight: 800;"><i class="fas fa-map-marked-alt me-2"></i>Geographic Analysis</h2>
+        <select id="companyFilter" class="form-select-cw" style="width: 280px;" onchange="loadAll()">
+            <option value="">All Companies</option>
+        </select>
+    </div>
+
+    <!-- Top States Chart -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-8">
+            <div class="chart-container" style="min-height: 400px;">
+                <h5><i class="fas fa-chart-bar me-2"></i>Top States by Complaint Volume</h5>
+                <canvas id="stateChart"></canvas>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="chart-container" style="min-height: 400px;">
+                <h5><i class="fas fa-money-bill-wave me-2"></i>Monetary Relief Rate by State</h5>
+                <canvas id="reliefChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- State Table -->
+    <div class="card-cw p-4">
+        <h5 style="font-weight: 700;" class="mb-3"><i class="fas fa-table me-2"></i>State Breakdown</h5>
+        <div class="table-responsive">
+            <table class="table table-cw" id="stateTable">
+                <thead>
+                    <tr>
+                        <th style="cursor:pointer;" onclick="sortTable(0)">#</th>
+                        <th style="cursor:pointer;" onclick="sortTable(1)">State</th>
+                        <th style="cursor:pointer;" onclick="sortTable(2)">Complaints</th>
+                        <th style="cursor:pointer;" onclick="sortTable(3)">Monetary Relief</th>
+                        <th style="cursor:pointer;" onclick="sortTable(4)">Relief Rate</th>
+                        <th>Volume Bar</th>
+                    </tr>
+                </thead>
+                <tbody id="stateTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let stateChart, reliefChart, stateData = [];
+
+function getCompany() { return document.getElementById('companyFilter').value; }
+function qs() {
+    const c = getCompany();
+    return c ? '?company=' + encodeURIComponent(c) : '';
+}
+
+async function loadCompanies() {
+    const res = await fetch('/api/companies');
+    const data = await res.json();
+    const sel = document.getElementById('companyFilter');
+    data.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.company;
+        opt.textContent = `${c.company} (${c.count.toLocaleString()})`;
+        sel.appendChild(opt);
+    });
+}
+
+async function loadStates() {
+    const res = await fetch('/api/state-breakdown' + qs());
+    stateData = await res.json();
+    const top15 = stateData.slice(0, 15);
+    const maxCount = Math.max(...stateData.map(d => d.count));
+
+    // Bar chart
+    const ctx = document.getElementById('stateChart').getContext('2d');
+    if (stateChart) stateChart.destroy();
+    stateChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: top15.map(d => d.state),
+            datasets: [{
+                label: 'Complaints',
+                data: top15.map(d => d.count),
+                backgroundColor: '#6366f199',
+                borderColor: '#6366f1',
+                borderWidth: 1,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#e0e0e8' } },
+                y: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' }, beginAtZero: true }
+            }
+        }
+    });
+
+    // Relief chart
+    const ctx2 = document.getElementById('reliefChart').getContext('2d');
+    if (reliefChart) reliefChart.destroy();
+    const reliefData = [...stateData].sort((a, b) => b.monetary_rate - a.monetary_rate).slice(0, 15);
+    reliefChart = new Chart(ctx2, {
+        type: 'bar',
+        data: {
+            labels: reliefData.map(d => d.state),
+            datasets: [{
+                label: 'Relief Rate %',
+                data: reliefData.map(d => d.monetary_rate),
+                backgroundColor: '#22c55e99',
+                borderColor: '#22c55e',
+                borderWidth: 1,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3', callback: v => v + '%' } },
+                y: { grid: { display: false }, ticks: { color: '#e0e0e8' } }
+            }
+        }
+    });
+
+    // Table
+    const tbody = document.getElementById('stateTableBody');
+    tbody.innerHTML = stateData.map((d, i) => `
+        <tr>
+            <td style="color: var(--text-muted);">${i + 1}</td>
+            <td style="font-weight: 600;">${d.state}</td>
+            <td>${d.count.toLocaleString()}</td>
+            <td>${d.monetary_count}</td>
+            <td>
+                <span style="color: ${d.monetary_rate > 15 ? 'var(--accent-green)' : d.monetary_rate > 8 ? 'var(--accent-amber)' : 'var(--accent-red)'}; font-weight: 600;">
+                    ${d.monetary_rate}%
+                </span>
+            </td>
+            <td style="width: 200px;">
+                <div style="background: rgba(99,102,241,0.1); border-radius: 4px; height: 20px; overflow: hidden;">
+                    <div style="background: var(--accent-indigo); height: 100%; width: ${(d.count / maxCount * 100).toFixed(1)}%; border-radius: 4px;"></div>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const dir = sortDir[col] = !sortDir[col];
+    const tbody = document.getElementById('stateTableBody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a, b) => {
+        let va = a.cells[col].textContent.replace(/[,%]/g, '');
+        let vb = b.cells[col].textContent.replace(/[,%]/g, '');
+        const na = parseFloat(va), nb = parseFloat(vb);
+        if (!isNaN(na) && !isNaN(nb)) return dir ? na - nb : nb - na;
+        return dir ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+function loadAll() { loadStates(); }
+loadCompanies();
+loadAll();
+</script>
+{% endblock %}
