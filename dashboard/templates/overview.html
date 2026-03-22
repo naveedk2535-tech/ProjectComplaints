@@ -1,14 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - ComplaintsWhoo{% endblock %}
+{% block title %}Dashboard - ComplaintsHoo{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-4 py-4">
     <!-- Header with Company Filter -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 style="font-weight: 800;"><i class="fas fa-chart-line me-2"></i>Overview Dashboard</h2>
-        <select id="companyFilter" class="form-select-cw" style="width: 280px;" onchange="loadAll()">
-            <option value="">All Companies</option>
-        </select>
+        <div class="d-flex gap-2 align-items-center">
+            <select id="companyFilter" class="form-select-cw" style="width: 280px;" onchange="loadAll()">
+                <option value="">All Companies</option>
+            </select>
+            {% if current_user and current_user.is_premium %}
+            <a id="exportBtn" href="/api/export/monthly-data" class="btn btn-cw-outline btn-sm" title="Export data as TXT">
+                <i class="fas fa-download me-1"></i>Export
+            </a>
+            {% else %}
+            <a href="{{ url_for('pricing') }}" class="btn btn-cw-outline btn-sm" title="Premium feature">
+                <i class="fas fa-lock me-1"></i>Export <span class="badge-premium ms-1">PRO</span>
+            </a>
+            {% endif %}
+        </div>
     </div>
 
     <!-- KPI Cards -->
@@ -66,7 +77,7 @@
     <!-- Health Score + Monthly Trend -->
     <div class="row g-3 mb-4">
         <div class="col-md-3">
-            <div class="chart-container text-center" style="min-height: 300px;">
+            <div class="chart-container text-center" style="height: 340px;">
                 <h5><i class="fas fa-heartbeat me-2"></i>Health Score</h5>
                 <div id="health-display" class="mt-4">
                     <div class="spinner-cw"></div>
@@ -74,9 +85,9 @@
             </div>
         </div>
         <div class="col-md-9">
-            <div class="chart-container" style="min-height: 300px;">
+            <div class="chart-container" style="height: 340px;">
                 <h5><i class="fas fa-chart-area me-2"></i>Monthly Complaint Trend</h5>
-                <canvas id="trendChart"></canvas>
+                <div style="position: relative; height: 280px;"><canvas id="trendChart"></canvas></div>
             </div>
         </div>
     </div>
@@ -84,15 +95,15 @@
     <!-- Response Breakdown + Product Breakdown -->
     <div class="row g-3">
         <div class="col-md-5">
-            <div class="chart-container" style="min-height: 350px;">
+            <div class="chart-container" style="height: 380px;">
                 <h5><i class="fas fa-chart-pie me-2"></i>Response Breakdown</h5>
-                <canvas id="responseChart"></canvas>
+                <div style="position: relative; height: 320px;"><canvas id="responseChart"></canvas></div>
             </div>
         </div>
         <div class="col-md-7">
-            <div class="chart-container" style="min-height: 350px;">
+            <div class="chart-container" style="height: 380px;">
                 <h5><i class="fas fa-boxes-stacked me-2"></i>Product Categories</h5>
-                <canvas id="productChart"></canvas>
+                <div style="position: relative; height: 320px;"><canvas id="productChart"></canvas></div>
             </div>
         </div>
     </div>
@@ -252,6 +263,12 @@ function loadAll() {
     loadTrend();
     loadResponse();
     loadProducts();
+    // Update export link with company filter
+    const exportBtn = document.getElementById('exportBtn');
+    if (exportBtn) {
+        const c = getCompany();
+        exportBtn.href = '/api/export/monthly-data' + (c ? '?company=' + encodeURIComponent(c) : '');
+    }
 }
 
 loadCompanies();

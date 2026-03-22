@@ -1,32 +1,41 @@
 {% extends "base.html" %}
-{% block title %}Segmentation - ComplaintsWhoo{% endblock %}
+{% block title %}Segmentation - ComplaintsHoo{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-4 py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 style="font-weight: 800;"><i class="fas fa-layer-group me-2"></i>Segmentation Analysis</h2>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 align-items-center">
             <select id="companyFilter" class="form-select-cw" style="width: 250px;" onchange="loadAll()">
                 <option value="">All Companies</option>
             </select>
             <select id="productFilter" class="form-select-cw" style="width: 200px;" onchange="loadIssues()">
                 <option value="">All Products</option>
             </select>
+            {% if current_user and current_user.is_premium %}
+            <a id="exportBtn" href="/api/export/segmentation-data" class="btn btn-cw-outline btn-sm" title="Export data as TXT">
+                <i class="fas fa-download me-1"></i>Export
+            </a>
+            {% else %}
+            <a href="{{ url_for('pricing') }}" class="btn btn-cw-outline btn-sm" title="Premium feature">
+                <i class="fas fa-lock me-1"></i>Export <span class="badge-premium ms-1">PRO</span>
+            </a>
+            {% endif %}
         </div>
     </div>
 
     <!-- Top Issues + Submission Channels -->
     <div class="row g-3 mb-4">
         <div class="col-md-8">
-            <div class="chart-container" style="min-height: 400px;">
+            <div class="chart-container" style="height: 420px;">
                 <h5><i class="fas fa-exclamation-circle me-2"></i>Top Issues</h5>
-                <canvas id="issueChart"></canvas>
+                <div style="position: relative; height: 360px;"><canvas id="issueChart"></canvas></div>
             </div>
         </div>
         <div class="col-md-4">
-            <div class="chart-container" style="min-height: 400px;">
+            <div class="chart-container" style="height: 420px;">
                 <h5><i class="fas fa-paper-plane me-2"></i>Submission Channels</h5>
-                <canvas id="channelChart"></canvas>
+                <div style="position: relative; height: 360px;"><canvas id="channelChart"></canvas></div>
             </div>
         </div>
     </div>
@@ -34,15 +43,15 @@
     <!-- Tags Analysis + Product Response Cross-tab -->
     <div class="row g-3">
         <div class="col-md-4">
-            <div class="chart-container" style="min-height: 350px;">
+            <div class="chart-container" style="height: 380px;">
                 <h5><i class="fas fa-tags me-2"></i>Consumer Tags</h5>
-                <canvas id="tagsChart"></canvas>
+                <div style="position: relative; height: 320px;"><canvas id="tagsChart"></canvas></div>
             </div>
         </div>
         <div class="col-md-8">
-            <div class="chart-container" style="min-height: 350px;">
+            <div class="chart-container" style="height: 380px;">
                 <h5><i class="fas fa-th me-2"></i>Product vs. Resolution Type</h5>
-                <canvas id="crosstabChart"></canvas>
+                <div style="position: relative; height: 320px;"><canvas id="crosstabChart"></canvas></div>
             </div>
         </div>
     </div>
@@ -199,6 +208,11 @@ function loadAll() {
     loadChannels();
     loadTags();
     loadCrosstab();
+    const exportBtn = document.getElementById('exportBtn');
+    if (exportBtn) {
+        const c = getCompany();
+        exportBtn.href = '/api/export/segmentation-data' + (c ? '?company=' + encodeURIComponent(c) : '');
+    }
 }
 
 loadCompanies();

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}AI Insights - ComplaintsWhoo{% endblock %}
+{% block title %}AI Insights - ComplaintsHoo{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-4 py-4">
@@ -8,15 +8,32 @@
             <h2 style="font-weight: 800;"><i class="fas fa-robot me-2"></i>AI-Powered Insights</h2>
             <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0;">Automated analysis powered by Groq AI</p>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 align-items-center">
             <select id="companyFilter" class="form-select-cw" style="width: 250px;">
                 <option value="">All Companies</option>
             </select>
             <button class="btn btn-cw" onclick="generateAll()" id="generateBtn">
                 <i class="fas fa-magic me-2"></i>Generate All Insights
             </button>
+            {% if current_user and current_user.is_premium %}
+            <a href="/api/export/ai-insights" class="btn btn-cw-outline btn-sm" title="Export insights as TXT">
+                <i class="fas fa-download me-1"></i>Export
+            </a>
+            {% else %}
+            <a href="{{ url_for('pricing') }}" class="btn btn-cw-outline btn-sm" title="Premium feature">
+                <i class="fas fa-lock me-1"></i>Export <span class="badge-premium ms-1">PRO</span>
+            </a>
+            {% endif %}
         </div>
     </div>
+
+    {% if not current_user or not current_user.is_premium %}
+    <div class="alert-cw alert-cw-info mb-4">
+        <i class="fas fa-crown me-2"></i>
+        <strong>Premium Feature:</strong> AI Insights are limited to 1 generation per day on the free trial.
+        <a href="{{ url_for('pricing') }}" style="color: var(--accent-indigo-light); font-weight: 600;">Upgrade to Premium</a> for unlimited analysis and text exports.
+    </div>
+    {% endif %}
 
     <!-- AI Sections -->
     <div class="row g-3">

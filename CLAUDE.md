@@ -1,4 +1,4 @@
-# ComplaintsWhoo - Financial Complaints Intelligence Platform
+# ComplaintsHoo - Financial Complaints Intelligence Platform
 
 ## Project Overview
 SaaS platform tracking financial complaints across banks, credit unions, and fintech companies.

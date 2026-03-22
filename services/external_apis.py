@@ -1,5 +1,5 @@
 """
-External Data Source Integrations for ComplaintsWhoo
+External Data Source Integrations for ComplaintsHoo
 Pulls data from multiple free government and regulatory APIs to build
 comprehensive financial institution profiles.
 """
@@ -183,7 +183,7 @@ def fdic_get_history(cert_number, limit=20):
 #    Docs: https://www.sec.gov/search-filings/edgar-full-text-search
 # ══════════════════════════════════════════════════════════════════
 
-SEC_HEADERS = {'User-Agent': 'ComplaintsWhoo/1.0 (complaints-research)'}
+SEC_HEADERS = {'User-Agent': 'ComplaintsHoo/1.0 (complaints-research)'}
 SEC_BASE = "https://efts.sec.gov/LATEST"
 
 
