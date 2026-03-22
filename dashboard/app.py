@@ -29,6 +29,83 @@ def create_app():
 
     init_db(app)
 
+    # Auto-load CSV if database is empty
+    with app.app_context():
+        if Complaint.query.count() == 0:
+            csv_paths = [
+                os.path.join(data_dir, 'complaintssyf.csv'),
+                os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'ai', 'complaintssyf.csv'),
+            ]
+            for csv_path in csv_paths:
+                if os.path.exists(csv_path):
+                    try:
+                        import csv as csv_mod
+                        from datetime import datetime as dt_parse
+                        added = 0
+                        with open(csv_path, 'r', encoding='utf-8-sig') as f:
+                            reader = csv_mod.DictReader(f)
+                            batch = []
+                            for row in reader:
+                                cid_str = row.get('Complaint ID', '').strip()
+                                if not cid_str:
+                                    continue
+                                try:
+                                    cid = int(cid_str)
+                                except ValueError:
+                                    continue
+                                dr = row.get('Date received', '').strip()
+                                date_recv = None
+                                for fmt in ('%m/%d/%y', '%m/%d/%Y', '%Y-%m-%d'):
+                                    try:
+                                        date_recv = dt_parse.strptime(dr, fmt).date()
+                                        break
+                                    except (ValueError, TypeError):
+                                        continue
+                                ds = row.get('Date sent to company', '').strip()
+                                date_sent = None
+                                for fmt in ('%m/%d/%y', '%m/%d/%Y', '%Y-%m-%d'):
+                                    try:
+                                        date_sent = dt_parse.strptime(ds, fmt).date()
+                                        break
+                                    except (ValueError, TypeError):
+                                        continue
+                                tags = row.get('Tags', '').strip()
+                                if tags in ('None', ''):
+                                    tags = None
+                                narrative = row.get('Consumer complaint narrative', '').strip() or None
+                                batch.append(Complaint(
+                                    complaint_id=cid, date_received=date_recv,
+                                    product=row.get('Product', '').strip(),
+                                    sub_product=row.get('Sub-product', '').strip(),
+                                    issue=row.get('Issue', '').strip(),
+                                    sub_issue=row.get('Sub-issue', '').strip(),
+                                    narrative=narrative,
+                                    company_public_response=row.get('Company public response', '').strip(),
+                                    company=row.get('Company', '').strip(),
+                                    state=row.get('State', '').strip(),
+                                    zip_code=row.get('ZIP code', '').strip(),
+                                    tags=tags,
+                                    consumer_consent=row.get('Consumer consent provided?', '').strip(),
+                                    submitted_via=row.get('Submitted via', '').strip(),
+                                    date_sent_to_company=date_sent,
+                                    company_response=row.get('Company response to consumer', '').strip(),
+                                    timely_response=row.get('Timely response?', '').strip() == 'Yes',
+                                    consumer_disputed=row.get('Consumer disputed?', '').strip(),
+                                ))
+                                if len(batch) >= 500:
+                                    db.session.add_all(batch)
+                                    db.session.commit()
+                                    added += len(batch)
+                                    batch = []
+                            if batch:
+                                db.session.add_all(batch)
+                                db.session.commit()
+                                added += len(batch)
+                        app.logger.info(f'Auto-loaded {added} complaints from CSV')
+                    except Exception as e:
+                        app.logger.error(f'CSV auto-load failed: {e}')
+                    break
+
     # Create default admin user
     with app.app_context():
         admin = User.query.filter_by(email=os.getenv('ADMIN_EMAIL', 'admin@complaintswhoo.com')).first()
