@@ -17,36 +17,50 @@ from models.database import db, BankProfile
 # ══════════════════════════════════════════════════════════════════
 
 FDIC_BASE = "https://banks.data.fdic.gov/api"
+FDIC_BASE_ALT = "https://api.fdic.gov/banks"  # Alternative endpoint
+
+
+def _fdic_request(endpoint, params, timeout=15):
+    """Try both FDIC API endpoints (primary and alternative)"""
+    for base in [FDIC_BASE_ALT, FDIC_BASE]:
+        try:
+            resp = requests.get(f"{base}/{endpoint}", params=params, timeout=timeout)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            continue
+    return None
 
 
 def fdic_search_institutions(name=None, state=None, limit=50):
     """Search FDIC for bank institutions"""
     params = {
-        'filters': '',
+        'filters': 'ACTIVE:1',
         'limit': limit,
         'sort_by': 'ASSET',
         'sort_order': 'DESC',
-        'fields': 'REPDTE,CERT,INSTNAME,CITY,STNAME,ASSET,DEP,NETINC,ROA,ROE,OFFDOM,ACTIVE',
+        'fields': 'REPDTE,CERT,NAME,CITY,STNAME,STALP,ASSET,DEP,NETINC,ROA,ROE,OFFDOM,ACTIVE',
     }
     if name:
-        params['filters'] = f'INSTNAME:"{name}"'
         params['search'] = name
+        params['filters'] = 'ACTIVE:1'
     if state:
-        if params['filters']:
-            params['filters'] += f' AND STNAME:"{state}"'
-        else:
-            params['filters'] = f'STNAME:"{state}"'
+        params['filters'] += f' AND STALP:"{state}"'
 
     try:
-        resp = requests.get(f"{FDIC_BASE}/financials", params=params, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
+        data = _fdic_request('financials', params)
+        if not data:
+            # Fallback: try institutions endpoint
+            data = _fdic_request('institutions', params)
+        if not data:
+            return []
+
         results = []
         for item in data.get('data', []):
             d = item.get('data', {})
             results.append({
                 'cert': d.get('CERT'),
-                'name': d.get('INSTNAME', ''),
+                'name': d.get('NAME', ''),
                 'city': d.get('CITY', ''),
                 'state': d.get('STNAME', ''),
                 'total_assets': d.get('ASSET', 0),
@@ -67,25 +81,21 @@ def fdic_search_institutions(name=None, state=None, limit=50):
 def fdic_get_institution(cert_number):
     """Get detailed info for a specific FDIC-insured institution"""
     try:
-        resp = requests.get(
-            f"{FDIC_BASE}/financials",
-            params={
-                'filters': f'CERT:{cert_number}',
-                'limit': 1,
-                'sort_by': 'REPDTE',
-                'sort_order': 'DESC',
-                'fields': 'REPDTE,CERT,INSTNAME,CITY,STNAME,ASSET,DEP,NETINC,ROA,ROE,OFFDOM,NITEFULL,EEFFULL,ERTEFULL,NTLNLS,NCLNLS',
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        data = _fdic_request('financials', {
+            'filters': f'CERT:{cert_number}',
+            'limit': 1,
+            'sort_by': 'REPDTE',
+            'sort_order': 'DESC',
+            'fields': 'REPDTE,CERT,NAME,CITY,STNAME,ASSET,DEP,NETINC,ROA,ROE,OFFDOM,NTLNLS,NCLNLS',
+        })
+        if not data:
+            return None
         items = data.get('data', [])
         if items:
             d = items[0].get('data', {})
             return {
                 'cert': d.get('CERT'),
-                'name': d.get('INSTNAME', ''),
+                'name': d.get('NAME', ''),
                 'city': d.get('CITY', ''),
                 'state': d.get('STNAME', ''),
                 'total_assets': d.get('ASSET', 0),
@@ -94,8 +104,6 @@ def fdic_get_institution(cert_number):
                 'roa': d.get('ROA', 0),
                 'roe': d.get('ROE', 0),
                 'offices': d.get('OFFDOM', 0),
-                'fte_employees': d.get('NITEFULL', 0),
-                'efficiency_ratio': d.get('EEFFULL', 0),
                 'noncurrent_loans_ratio': d.get('NTLNLS', 0),
                 'net_chargeoffs_ratio': d.get('NCLNLS', 0),
                 'report_date': d.get('REPDTE', ''),
@@ -109,26 +117,22 @@ def fdic_get_institution(cert_number):
 def fdic_get_failures(limit=100):
     """Get recent bank failures from FDIC"""
     try:
-        resp = requests.get(
-            f"{FDIC_BASE}/failures",
-            params={
-                'limit': limit,
-                'sort_by': 'FAILDATE',
-                'sort_order': 'DESC',
-                'fields': 'CERT,INSTNAME,CITY,ST,FAILDATE,SAVR,RESTYPE,COST,QBFASSET,QBFDEP',
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        data = _fdic_request('failures', {
+            'limit': limit,
+            'sort_by': 'FAILDATE',
+            'sort_order': 'DESC',
+            'fields': 'CERT,NAME,CITY,PSTALP,FAILDATE,SAVR,RESTYPE,COST,QBFASSET,QBFDEP',
+        })
+        if not data:
+            return []
         results = []
         for item in data.get('data', []):
             d = item.get('data', {})
             results.append({
                 'cert': d.get('CERT'),
-                'name': d.get('INSTNAME', ''),
+                'name': d.get('NAME', ''),
                 'city': d.get('CITY', ''),
-                'state': d.get('ST', ''),
+                'state': d.get('PSTALP', d.get('ST', '')),
                 'fail_date': d.get('FAILDATE', ''),
                 'acquiring_institution': d.get('SAVR', ''),
                 'resolution_type': d.get('RESTYPE', ''),
@@ -145,19 +149,15 @@ def fdic_get_failures(limit=100):
 def fdic_get_history(cert_number, limit=20):
     """Get financial history for an institution over time"""
     try:
-        resp = requests.get(
-            f"{FDIC_BASE}/financials",
-            params={
-                'filters': f'CERT:{cert_number}',
-                'limit': limit,
-                'sort_by': 'REPDTE',
-                'sort_order': 'DESC',
-                'fields': 'REPDTE,ASSET,DEP,NETINC,ROA,ROE,NTLNLS,NCLNLS',
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        data = _fdic_request('financials', {
+            'filters': f'CERT:{cert_number}',
+            'limit': limit,
+            'sort_by': 'REPDTE',
+            'sort_order': 'DESC',
+            'fields': 'REPDTE,ASSET,DEP,NETINC,ROA,ROE,NTLNLS,NCLNLS',
+        })
+        if not data:
+            return []
         results = []
         for item in data.get('data', []):
             d = item.get('data', {})
