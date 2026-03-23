@@ -736,6 +736,98 @@ def create_app():
         company = request.args.get('company')
         return jsonify(get_narrative_stats(company=company))
 
+    @app.route('/api/top5-comparison')
+    @login_required
+    def api_top5_comparison():
+        """Top 5 analysis across all extractable dimensions for a company."""
+        from services.analytics import get_product_breakdown, get_issue_breakdown, get_state_breakdown, get_submission_channels, get_response_breakdown
+        from sqlalchemy import func, desc
+        company = request.args.get('company')
+
+        result = {}
+
+        # Top 5 products
+        products = get_product_breakdown(company=company)
+        result['products'] = products[:5]
+
+        # Top 5 issues
+        issues = get_issue_breakdown(company=company, limit=5)
+        result['issues'] = issues
+
+        # Top 5 sub-products
+        q = db.session.query(Complaint.sub_product, func.count().label('count'))
+        if company:
+            q = q.filter(Complaint.company == company)
+        q = q.filter(Complaint.sub_product.isnot(None), Complaint.sub_product != '')
+        q = q.group_by(Complaint.sub_product).order_by(desc('count')).limit(5)
+        result['sub_products'] = [{'name': r.sub_product, 'count': r.count} for r in q.all()]
+
+        # Top 5 sub-issues
+        q = db.session.query(Complaint.sub_issue, func.count().label('count'))
+        if company:
+            q = q.filter(Complaint.company == company)
+        q = q.filter(Complaint.sub_issue.isnot(None), Complaint.sub_issue != '')
+        q = q.group_by(Complaint.sub_issue).order_by(desc('count')).limit(5)
+        result['sub_issues'] = [{'name': r.sub_issue, 'count': r.count} for r in q.all()]
+
+        # Top 5 states
+        states = get_state_breakdown(company=company, limit=5)
+        result['states'] = states
+
+        # Top 5 company responses
+        responses = get_response_breakdown(company=company)
+        result['responses'] = responses[:5]
+
+        # Top 5 channels
+        channels = get_submission_channels(company=company)
+        result['channels'] = channels[:5]
+
+        # Top 5 tags
+        q = db.session.query(Complaint.tags, func.count().label('count'))
+        if company:
+            q = q.filter(Complaint.company == company)
+        q = q.filter(Complaint.tags.isnot(None), Complaint.tags != '', Complaint.tags != 'None')
+        q = q.group_by(Complaint.tags).order_by(desc('count')).limit(5)
+        result['tags'] = [{'name': r.tags, 'count': r.count} for r in q.all()]
+
+        # Top 5 public responses
+        q = db.session.query(Complaint.company_public_response, func.count().label('count'))
+        if company:
+            q = q.filter(Complaint.company == company)
+        q = q.filter(Complaint.company_public_response.isnot(None), Complaint.company_public_response != '')
+        q = q.group_by(Complaint.company_public_response).order_by(desc('count')).limit(5)
+        result['public_responses'] = [{'name': r.company_public_response[:60], 'count': r.count} for r in q.all()]
+
+        return jsonify(result)
+
+    @app.route('/api/data-sources')
+    @login_required
+    def api_data_sources():
+        """Return info about all data sources and what data we have."""
+        from models.database import MonthlyVolume
+        complaint_count = Complaint.query.count()
+        company_count = db.session.query(Complaint.company).distinct().count()
+        mv_count = MonthlyVolume.query.count()
+        date_range = db.session.query(
+            db.func.min(Complaint.date_received),
+            db.func.max(Complaint.date_received)
+        ).first()
+        return jsonify({
+            'cfpb': {
+                'status': 'active',
+                'complaints': complaint_count,
+                'companies': company_count,
+                'monthly_volumes': mv_count,
+                'date_range': [str(date_range[0]) if date_range[0] else None, str(date_range[1]) if date_range[1] else None],
+                'fields': ['date_received','product','sub_product','issue','sub_issue','narrative','company_public_response',
+                           'company','state','zip_code','tags','consumer_consent','submitted_via','date_sent_to_company',
+                           'company_response','timely_response','consumer_disputed'],
+            },
+            'fdic': {'status': 'active', 'description': 'Bank financials, assets, deposits, ROA/ROE via live API'},
+            'sec_edgar': {'status': 'active', 'description': 'Company filings (10-K, 10-Q, 8-K) via live API'},
+            'finra': {'status': 'limited', 'description': 'Broker disclosures via search API (best effort)'},
+        })
+
     @app.route('/api/text/word-trends')
     @login_required
     def api_word_trends():

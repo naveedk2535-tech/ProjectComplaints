@@ -3,16 +3,22 @@
 
 {% block content %}
 <div class="container-fluid px-4 py-4">
-    <!-- Header -->
+    <!-- Header + Filters -->
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <h2 style="font-weight: 800;"><i class="fas fa-chart-line me-2"></i>Complaints Intelligence Dashboard</h2>
+        <h2 style="font-weight:800;"><i class="fas fa-chart-line me-2"></i>Complaints Intelligence Dashboard</h2>
         <div class="d-flex gap-2 align-items-center flex-wrap">
             <select id="companyFilter" class="form-select-cw" style="width:250px;" onchange="loadAll()">
                 <option value="">Industry Overview</option>
             </select>
-            <select id="compareFilter" class="form-select-cw" style="width:220px;" multiple size="1" title="Hold Ctrl/Cmd to select multiple" onchange="loadTrend()">
-                <option value="" selected>Compare with...</option>
-            </select>
+            <div class="position-relative" style="width:220px;">
+                <div class="form-control-cw d-flex align-items-center justify-content-between" style="cursor:pointer;font-size:0.85rem;padding:0.45rem 0.8rem;" onclick="toggleEl('compare-dropdown')">
+                    <span id="compare-label" style="color:var(--text-muted);">Compare with...</span>
+                    <i class="fas fa-caret-down" style="color:var(--text-muted);"></i>
+                </div>
+                <div id="compare-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:100;background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;max-height:250px;overflow-y:auto;margin-top:4px;padding:4px;" class="shadow">
+                    <div id="compare-options"></div>
+                </div>
+            </div>
             <select id="periodFilter" class="form-select-cw" style="width:130px;" onchange="loadAll()">
                 <option value="">All Time</option>
                 <option value="12" selected>Last 12 Mo</option>
@@ -26,42 +32,51 @@
     </div>
 
     <!-- KPI Cards with peer variance -->
-    <div class="row g-2 mb-4" id="kpi-row">
+    <div class="row g-2 mb-3">
         <div class="col"><div class="kpi-card"><div class="accent-bar accent-indigo"></div><div class="ps-3">
-            <div class="kpi-value" id="kpi-total" style="font-size:1.4rem; color:var(--accent-indigo-light);">--</div>
+            <div class="kpi-value" id="kpi-total" style="font-size:1.4rem;color:var(--accent-indigo-light);">--</div>
             <div class="kpi-label">Total Complaints</div>
-            <div id="kpi-total-var" class="kpi-variance"></div>
+            <div id="kpi-total-var" class="kpi-var"></div>
         </div></div></div>
         <div class="col"><div class="kpi-card"><div class="accent-bar accent-green"></div><div class="ps-3">
-            <div class="kpi-value" id="kpi-resolution" style="font-size:1.4rem; color:var(--accent-green);">--</div>
+            <div class="kpi-value" id="kpi-resolution" style="font-size:1.4rem;color:var(--accent-green);">--</div>
             <div class="kpi-label">Resolution Rate</div>
-            <div id="kpi-resolution-var" class="kpi-variance"></div>
+            <div id="kpi-resolution-var" class="kpi-var"></div>
         </div></div></div>
         <div class="col"><div class="kpi-card"><div class="accent-bar accent-cyan"></div><div class="ps-3">
-            <div class="kpi-value" id="kpi-monetary" style="font-size:1.4rem; color:var(--accent-cyan);">--</div>
+            <div class="kpi-value" id="kpi-monetary" style="font-size:1.4rem;color:var(--accent-cyan);">--</div>
             <div class="kpi-label">Monetary Relief</div>
-            <div id="kpi-monetary-var" class="kpi-variance"></div>
+            <div id="kpi-monetary-var" class="kpi-var"></div>
         </div></div></div>
         <div class="col"><div class="kpi-card"><div class="accent-bar accent-amber"></div><div class="ps-3">
-            <div class="kpi-value" id="kpi-timely" style="font-size:1.4rem; color:var(--accent-amber);">--</div>
+            <div class="kpi-value" id="kpi-timely" style="font-size:1.4rem;color:var(--accent-amber);">--</div>
             <div class="kpi-label">Timely Response</div>
-            <div id="kpi-timely-var" class="kpi-variance"></div>
+            <div id="kpi-timely-var" class="kpi-var"></div>
         </div></div></div>
         <div class="col"><div class="kpi-card"><div class="accent-bar accent-purple"></div><div class="ps-3">
-            <div class="kpi-value" id="kpi-health" style="font-size:1.4rem; color:var(--accent-purple);">--</div>
+            <div class="kpi-value" id="kpi-health" style="font-size:1.4rem;color:var(--accent-purple);">--</div>
             <div class="kpi-label">Health Grade <span class="help-icon" onclick="event.stopPropagation();toggleEl('health-help')">?</span></div>
-            <div id="kpi-health-var" class="kpi-variance"></div>
         </div></div></div>
     </div>
     <div id="health-help" class="alert-cw alert-cw-info mb-3" style="display:none;font-size:0.75rem;">
-        <strong>Health Grade:</strong> Resolution(30%) + Monetary Relief(20%) + Timely(15%) + Trend Direction(20%) + Severity(15%). A=80+ B=65+ C=50+ D=35+ F=&lt;35
+        <strong>Health Grade:</strong> Resolution(30%) + Monetary Relief(20%) + Timely(15%) + Trend(20%) + Severity(15%). A=80+ B=65+ C=50+ D=35+ F=&lt;35
     </div>
 
-    <!-- Monthly Trend + Response -->
+    <!-- MoM Movement (near top) -->
+    <div class="row g-2 mb-4">
+        <div class="col-md-2"><div class="kpi-card text-center"><div class="kpi-label" style="font-size:0.7rem;">Volume MoM</div><div class="kpi-value" id="mom-vol" style="font-size:1.3rem;">--</div></div></div>
+        <div class="col-md-2"><div class="kpi-card text-center"><div class="kpi-label" style="font-size:0.7rem;">Relief MoM</div><div class="kpi-value" id="mom-mon" style="font-size:1.3rem;">--</div></div></div>
+        <div class="col-md-4"><div class="card-cw p-2"><div style="font-size:0.7rem;font-weight:700;color:var(--accent-red);margin-bottom:2px;"><i class="fas fa-fire me-1"></i>Growing Issues</div><div id="mom-up" style="font-size:0.75rem;"></div></div></div>
+        <div class="col-md-4"><div class="card-cw p-2"><div style="font-size:0.7rem;font-weight:700;color:var(--accent-green);margin-bottom:2px;"><i class="fas fa-arrow-down me-1"></i>Declining Issues</div><div id="mom-down" style="font-size:0.75rem;"></div></div></div>
+    </div>
+
+    <!-- Trend + Response -->
     <div class="row g-3 mb-4">
         <div class="col-md-8">
             <div class="chart-container" style="height:380px;">
-                <h5><i class="fas fa-chart-area me-2"></i>Monthly Complaint Volume <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;">Dashed = partial/forecast | Outliers normalized</span></h5>
+                <h5><i class="fas fa-chart-area me-2"></i>Monthly Complaint Volume
+                    <span id="forecast-label" style="font-size:0.7rem;color:var(--accent-amber);font-weight:400;display:none;"></span>
+                </h5>
                 <div style="position:relative;height:320px;"><canvas id="trendChart"></canvas></div>
             </div>
         </div>
@@ -73,372 +88,300 @@
         </div>
     </div>
 
-    <!-- ═══ EXPANDABLE SECTIONS ═══ -->
-    <div class="accordion" id="mainAccordion">
+    <!-- EXPANDABLE SECTIONS -->
+    <div class="accordion" id="mainAcc">
 
-        <!-- 1. Product & Issue Analysis -->
+        <!-- Top 5 Comparison -->
+        <div class="card-cw mb-3"><div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-top5">
+            <h5 style="font-weight:700;margin:0;"><i class="fas fa-trophy me-2"></i>Top 5 Analysis (All Dimensions)</h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
+        </div><div class="collapse" id="sec-top5" data-section="top5"><div class="p-3 pt-0">
+            <div id="top5-content"><div class="text-center py-3"><div class="spinner-cw"></div></div></div>
+        </div></div></div>
+
+        <!-- Products & Issues -->
         <div class="card-cw mb-3"><div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-products">
             <h5 style="font-weight:700;margin:0;"><i class="fas fa-boxes-stacked me-2"></i>Product & Issue Breakdown</h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
         </div><div class="collapse" id="sec-products" data-section="products"><div class="p-3 pt-0"><div class="row g-3">
             <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>By Product</h6><div style="position:relative;height:290px;"><canvas id="productChart"></canvas></div></div></div>
             <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>Top Issues</h6><div style="position:relative;height:290px;"><canvas id="issueChart"></canvas></div></div></div>
-            <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>Sub-Product Detail</h6><div style="position:relative;height:290px;"><canvas id="subProductChart"></canvas></div></div></div>
-            <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>Issue Resolution Quality (How each issue gets resolved)</h6><div style="position:relative;height:290px;"><canvas id="issueResChart"></canvas></div></div></div>
+            <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>Sub-Products</h6><div style="position:relative;height:290px;"><canvas id="subProductChart"></canvas></div></div></div>
+            <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>Issue Resolution Quality</h6><div style="position:relative;height:290px;"><canvas id="issueResChart"></canvas></div></div></div>
         </div></div></div></div>
 
-        <!-- 2. Word Intelligence & Sentiment -->
+        <!-- Word Intelligence -->
         <div class="card-cw mb-3"><div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-words">
             <h5 style="font-weight:700;margin:0;"><i class="fas fa-comment-dots me-2"></i>Word Intelligence, Sentiment & Trends</h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
         </div><div class="collapse" id="sec-words" data-section="words"><div class="p-3 pt-0">
             <div class="row g-2 mb-3">
                 <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="s-score" style="font-size:1.5rem;">--</div><div class="kpi-label">Sentiment</div></div></div>
-                <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="s-neg" style="font-size:1.2rem;color:var(--accent-red);">--</div><div class="kpi-label">Negative Mentions</div></div></div>
-                <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="s-pos" style="font-size:1.2rem;color:var(--accent-green);">--</div><div class="kpi-label">Positive Mentions</div></div></div>
-                <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="s-total" style="font-size:1.2rem;color:var(--accent-cyan);">--</div><div class="kpi-label">Narratives Analyzed</div></div></div>
+                <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="s-neg" style="font-size:1.2rem;color:var(--accent-red);">--</div><div class="kpi-label">Negative</div></div></div>
+                <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="s-pos" style="font-size:1.2rem;color:var(--accent-green);">--</div><div class="kpi-label">Positive</div></div></div>
+                <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="s-total" style="font-size:1.2rem;color:var(--accent-cyan);">--</div><div class="kpi-label">Narratives</div></div></div>
             </div>
             <div class="row g-3 mb-3">
-                <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>Top Words in Complaints</h6><div style="position:relative;height:290px;"><canvas id="wordsChart"></canvas></div></div></div>
+                <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>Top Words</h6><div style="position:relative;height:290px;"><canvas id="wordsChart"></canvas></div></div></div>
                 <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>Complaint Themes</h6><div style="position:relative;height:290px;"><canvas id="themesChart"></canvas></div></div></div>
             </div>
-            <!-- Word Trends Over Time -->
             <div class="row g-3 mb-3">
-                <div class="col-12"><div class="chart-container" style="height:350px;"><h6><i class="fas fa-chart-line me-1"></i>Key Word Trends (Monthly) - Are issues growing or shrinking?</h6><div style="position:relative;height:290px;"><canvas id="wordTrendChart"></canvas></div></div></div>
+                <div class="col-12"><div class="chart-container" style="height:350px;"><h6><i class="fas fa-chart-line me-1"></i>Key Word Monthly Trends - Are issues growing or shrinking?</h6><div style="position:relative;height:290px;"><canvas id="wordTrendChart"></canvas></div></div></div>
             </div>
-            <!-- Trending Up / Down -->
             <div class="row g-3 mb-3">
-                <div class="col-md-6"><div class="card-cw p-3">
-                    <h6 style="font-weight:700;color:var(--accent-red);"><i class="fas fa-fire me-1"></i>Trending Up (Emerging Issues)</h6>
-                    <div id="trending-up" style="font-size:0.85rem;"></div>
-                </div></div>
-                <div class="col-md-6"><div class="card-cw p-3">
-                    <h6 style="font-weight:700;color:var(--accent-green);"><i class="fas fa-arrow-down me-1"></i>Trending Down (Improving)</h6>
-                    <div id="trending-down" style="font-size:0.85rem;"></div>
-                </div></div>
+                <div class="col-md-6"><div class="card-cw p-3"><h6 style="font-weight:700;color:var(--accent-red);font-size:0.85rem;"><i class="fas fa-fire me-1"></i>Trending Up (Emerging)</h6><div id="trending-up" style="font-size:0.8rem;"></div></div></div>
+                <div class="col-md-6"><div class="card-cw p-3"><h6 style="font-weight:700;color:var(--accent-green);font-size:0.85rem;"><i class="fas fa-arrow-down me-1"></i>Trending Down (Improving)</h6><div id="trending-down" style="font-size:0.8rem;"></div></div></div>
             </div>
-            <!-- Negative / Positive Keywords -->
             <div class="row g-3">
-                <div class="col-md-6"><div class="card-cw p-3"><h6 style="font-weight:700;color:var(--accent-red);"><i class="fas fa-exclamation-triangle me-1"></i>Negative Keywords</h6><div id="neg-words" style="font-size:0.85rem;"></div></div></div>
-                <div class="col-md-6"><div class="card-cw p-3"><h6 style="font-weight:700;color:var(--accent-green);"><i class="fas fa-check-circle me-1"></i>Positive Keywords</h6><div id="pos-words" style="font-size:0.85rem;"></div></div></div>
+                <div class="col-md-6"><div class="card-cw p-3"><h6 style="font-weight:700;color:var(--accent-red);font-size:0.85rem;">Negative Keywords</h6><div id="neg-words"></div></div></div>
+                <div class="col-md-6"><div class="card-cw p-3"><h6 style="font-weight:700;color:var(--accent-green);font-size:0.85rem;">Positive Keywords</h6><div id="pos-words"></div></div></div>
             </div>
         </div></div></div>
 
-        <!-- 3. Geographic & Channel -->
+        <!-- Geographic -->
         <div class="card-cw mb-3"><div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-geo">
-            <h5 style="font-weight:700;margin:0;"><i class="fas fa-map-marked-alt me-2"></i>Geographic & Channel Analysis</h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
+            <h5 style="font-weight:700;margin:0;"><i class="fas fa-map-marked-alt me-2"></i>Geographic & Channel</h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
         </div><div class="collapse" id="sec-geo" data-section="geo"><div class="p-3 pt-0"><div class="row g-3">
             <div class="col-md-7"><div class="chart-container" style="height:350px;"><h6>Top States</h6><div style="position:relative;height:290px;"><canvas id="stateChart"></canvas></div></div></div>
-            <div class="col-md-5"><div class="chart-container" style="height:350px;"><h6>Submission Channels</h6><div style="position:relative;height:290px;"><canvas id="channelChart"></canvas></div></div></div>
+            <div class="col-md-5"><div class="chart-container" style="height:350px;"><h6>Channels</h6><div style="position:relative;height:290px;"><canvas id="channelChart"></canvas></div></div></div>
         </div></div></div></div>
 
-        <!-- 4. Bank Performance Comparison -->
+        <!-- Bank Ranking -->
         <div class="card-cw mb-3"><div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-banks">
-            <h5 style="font-weight:700;margin:0;"><i class="fas fa-university me-2"></i>Bank Performance Ranking <span class="help-icon" onclick="event.stopPropagation();toggleEl('grade-info')">? How grades work</span></h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
+            <h5 style="font-weight:700;margin:0;"><i class="fas fa-university me-2"></i>Bank Performance Ranking <span class="help-icon" onclick="event.stopPropagation();toggleEl('grade-info')">? Methodology</span></h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
         </div><div class="collapse" id="sec-banks" data-section="banks"><div class="p-3 pt-0">
-            <div id="grade-info" class="alert-cw alert-cw-info mb-3" style="display:none;font-size:0.75rem;">
-                <strong>Scoring:</strong> Resolution(30%) + Monetary Relief(20%) + Timely Response(15%) + Trend Direction(20%) + Complaint Severity(15%). A=80+ B=65+ C=50+ D=35+ F=&lt;35
-            </div>
+            <div id="grade-info" class="alert-cw alert-cw-info mb-3" style="display:none;font-size:0.75rem;"><strong>Scoring:</strong> Resolution(30%)+Monetary Relief(20%)+Timely(15%)+Trend(20%)+Severity(15%). A=80+ B=65+ C=50+ D=35+ F=&lt;35</div>
             <div class="table-responsive"><table class="table table-cw"><thead><tr><th>#</th><th>Institution</th><th>Complaints</th><th>Resolution</th><th>Monetary</th><th>Timely</th><th>Score</th><th>Grade</th></tr></thead>
             <tbody id="bankTableBody"></tbody></table></div>
         </div></div></div>
 
-        <!-- 5. Movement & MoM Changes -->
-        <div class="card-cw mb-3"><div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-mom">
-            <h5 style="font-weight:700;margin:0;"><i class="fas fa-exchange-alt me-2"></i>Month-over-Month Movement</h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
-        </div><div class="collapse" id="sec-mom" data-section="mom"><div class="p-3 pt-0">
-            <div class="row g-3">
-                <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-label mb-1">Volume MoM</div><div class="kpi-value" id="mom-vol" style="font-size:1.6rem;">--</div></div></div>
-                <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-label mb-1">Monetary Relief MoM</div><div class="kpi-value" id="mom-mon" style="font-size:1.6rem;">--</div></div></div>
-                <div class="col-md-3"><div class="card-cw p-3"><h6 style="font-weight:700;font-size:0.8rem;color:var(--accent-red);"><i class="fas fa-arrow-up me-1"></i>Growing Issues</h6><div id="mom-up" style="font-size:0.8rem;"></div></div></div>
-                <div class="col-md-3"><div class="card-cw p-3"><h6 style="font-weight:700;font-size:0.8rem;color:var(--accent-green);"><i class="fas fa-arrow-down me-1"></i>Declining Issues</h6><div id="mom-down" style="font-size:0.8rem;"></div></div></div>
-            </div>
+        <!-- Data Sources -->
+        <div class="card-cw mb-3"><div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-sources">
+            <h5 style="font-weight:700;margin:0;"><i class="fas fa-database me-2"></i>Data Sources & Coverage</h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
+        </div><div class="collapse" id="sec-sources" data-section="sources"><div class="p-3 pt-0">
+            <div id="sources-content"><div class="text-center py-3"><div class="spinner-cw"></div></div></div>
         </div></div></div>
 
-    </div><!-- accordion -->
+    </div>
 </div>
 
 <style>
-.kpi-variance { font-size:0.65rem; margin-top:2px; font-weight:600; }
-.help-icon { cursor:pointer; color:var(--accent-indigo-light); font-size:0.75rem; font-weight:400; margin-left:4px; }
-#compareFilter { min-height:34px; }
+.kpi-var{font-size:0.65rem;margin-top:2px;font-weight:600;}
+.help-icon{cursor:pointer;color:var(--accent-indigo-light);font-size:0.75rem;font-weight:400;margin-left:4px;}
+.top5-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;}
+.top5-card{background:var(--bg-input);border-radius:10px;padding:12px;}
+.top5-card h6{font-size:0.8rem;font-weight:700;margin-bottom:8px;color:var(--text-primary);}
+.top5-item{display:flex;justify-content:space-between;padding:3px 0;font-size:0.8rem;border-bottom:1px solid rgba(99,102,241,0.05);}
+.top5-item .name{color:var(--text-secondary);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.top5-item .count{font-weight:700;color:var(--text-primary);}
 </style>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const CL = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16','#64748b','#d946ef'];
-const RC = {'Closed with explanation':'#6366f1','Closed with monetary relief':'#22c55e','Closed with non-monetary relief':'#f59e0b','In progress':'#ef4444'};
-let charts = {};
-function C() { return document.getElementById('companyFilter').value; }
-function P() { return document.getElementById('periodFilter').value; }
-function getCompareCompanies() {
-    const sel = document.getElementById('compareFilter');
-    return Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
-}
-function qs(e={}) { const p={}; const c=C(); if(c) p.company=c; const m=P(); if(m) p.months=m; Object.assign(p,e); return '?'+new URLSearchParams(p); }
-function D(n) { if(charts[n]){charts[n].destroy(); delete charts[n];} }
-function fmt(n) { return n!=null?Number(n).toLocaleString():'--'; }
-function toggleEl(id) { const e=document.getElementById(id); e.style.display=e.style.display==='none'?'block':'none'; }
-function varHtml(val, peerVal, suffix='%', invert=false) {
-    if (!peerVal && peerVal !== 0) return '';
-    const diff = val - peerVal;
-    const better = invert ? diff < 0 : diff > 0;
-    const color = better ? 'var(--accent-green)' : 'var(--accent-red)';
-    const arrow = diff > 0 ? '+' : '';
-    return `<span style="color:${color};">${arrow}${diff.toFixed(1)}${suffix}</span> vs peers (${peerVal}${suffix})`;
+const CL=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16','#64748b','#d946ef'];
+const RC={'Closed with explanation':'#6366f1','Closed with monetary relief':'#22c55e','Closed with non-monetary relief':'#f59e0b','In progress':'#ef4444'};
+let charts={}, selectedCompares=new Set();
+function C(){return document.getElementById('companyFilter').value;}
+function P(){return document.getElementById('periodFilter').value;}
+function qs(e={}){const p={};const c=C();if(c)p.company=c;const m=P();if(m)p.months=m;Object.assign(p,e);return '?'+new URLSearchParams(p);}
+function D(n){if(charts[n]){charts[n].destroy();delete charts[n];}}
+function fmt(n){return n!=null?Number(n).toLocaleString():'--';}
+function toggleEl(id){const e=document.getElementById(id);e.style.display=e.style.display==='none'?'block':'none';}
+
+// Close compare dropdown when clicking outside
+document.addEventListener('click',e=>{if(!e.target.closest('#compare-dropdown')&&!e.target.closest('[onclick*="compare-dropdown"]')){document.getElementById('compare-dropdown').style.display='none';}});
+
+function updateCompareLabel(){
+    const label=document.getElementById('compare-label');
+    if(selectedCompares.size===0) label.textContent='Compare with...';
+    else label.textContent=`${selectedCompares.size} selected`;
+    label.style.color=selectedCompares.size>0?'var(--text-primary)':'var(--text-muted)';
 }
 
-async function loadCompanies() {
-    const r = await fetch('/api/companies'); const d = await r.json();
-    const s = document.getElementById('companyFilter');
-    const c = document.getElementById('compareFilter');
-    d.forEach(x => {
-        [s, c].forEach(sel => {
-            const o = document.createElement('option');
-            o.value = x.company; o.textContent = `${x.company} (${x.count.toLocaleString()})`;
-            sel.appendChild(o);
-        });
+async function loadCompanies(){
+    const r=await fetch('/api/companies');const d=await r.json();
+    const s=document.getElementById('companyFilter');
+    const opts=document.getElementById('compare-options');
+    d.forEach(x=>{
+        const o=document.createElement('option');o.value=x.company;o.textContent=`${x.company} (${x.count.toLocaleString()})`;s.appendChild(o);
+        // Compare checkboxes
+        const div=document.createElement('div');
+        div.style.cssText='padding:4px 8px;font-size:0.8rem;cursor:pointer;border-radius:6px;display:flex;align-items:center;gap:6px;';
+        div.innerHTML=`<input type="checkbox" value="${x.company}" style="accent-color:var(--accent-indigo);" onchange="toggleCompare(this)"><span style="color:var(--text-secondary);">${x.company.substring(0,30)}</span>`;
+        div.onmouseover=()=>div.style.background='rgba(99,102,241,0.1)';
+        div.onmouseout=()=>div.style.background='transparent';
+        opts.appendChild(div);
     });
 }
 
-async function loadKPIs() {
-    const [kr, hr] = await Promise.all([fetch('/api/kpis'+qs()), fetch('/api/health-score'+qs())]);
-    const k = await kr.json(), h = await hr.json();
-    document.getElementById('kpi-total').textContent = fmt(k.total);
-    document.getElementById('kpi-resolution').textContent = k.resolution_rate+'%';
-    document.getElementById('kpi-monetary').textContent = k.monetary_relief_rate+'%';
-    document.getElementById('kpi-timely').textContent = k.timely_rate+'%';
-    document.getElementById('kpi-health').textContent = h.grade+' ('+h.score+')';
+function toggleCompare(cb){
+    if(cb.checked)selectedCompares.add(cb.value);else selectedCompares.delete(cb.value);
+    updateCompareLabel();loadTrend();
+}
 
-    // Peer variance (only when a company is selected)
-    if (C()) {
-        const pr = await fetch('/api/peer-average?company='+encodeURIComponent(C()));
-        const peer = await pr.json();
-        if (peer.resolution_rate) {
-            document.getElementById('kpi-total-var').innerHTML = `<span style="color:var(--text-muted);">Peers avg: ${fmt(Math.round(peer.total / peer.peer_count))}/company</span>`;
-            document.getElementById('kpi-resolution-var').innerHTML = varHtml(k.resolution_rate, peer.resolution_rate);
-            document.getElementById('kpi-monetary-var').innerHTML = varHtml(k.monetary_relief_rate, peer.monetary_relief_rate);
-            document.getElementById('kpi-timely-var').innerHTML = varHtml(k.timely_rate, peer.timely_rate);
+async function loadKPIs(){
+    const[kr,hr]=await Promise.all([fetch('/api/kpis'+qs()),fetch('/api/health-score'+qs())]);
+    const k=await kr.json(),h=await hr.json();
+    document.getElementById('kpi-total').textContent=fmt(k.total);
+    document.getElementById('kpi-resolution').textContent=k.resolution_rate+'%';
+    document.getElementById('kpi-monetary').textContent=k.monetary_relief_rate+'%';
+    document.getElementById('kpi-timely').textContent=k.timely_rate+'%';
+    document.getElementById('kpi-health').textContent=h.grade+' ('+h.score+')';
+    // Peer variance
+    if(C()){
+        const pr=await fetch('/api/peer-average?company='+encodeURIComponent(C()));const peer=await pr.json();
+        if(peer.resolution_rate!=null){
+            const vr=(v,p,inv)=>{const d=v-p;const ok=inv?d<0:d>0;return `<span style="color:${ok?'var(--accent-green)':'var(--accent-red)'};">${d>0?'+':''}${d.toFixed(1)}%</span> <span style="color:var(--text-muted);">vs peers ${p}%</span>`;};
+            document.getElementById('kpi-total-var').innerHTML=`<span style="color:var(--text-muted);">Peer avg: ${fmt(Math.round(peer.total/peer.peer_count))}</span>`;
+            document.getElementById('kpi-resolution-var').innerHTML=vr(k.resolution_rate,peer.resolution_rate,false);
+            document.getElementById('kpi-monetary-var').innerHTML=vr(k.monetary_relief_rate,peer.monetary_relief_rate,false);
+            document.getElementById('kpi-timely-var').innerHTML=vr(k.timely_rate,peer.timely_rate,false);
         }
     } else {
-        ['kpi-total-var','kpi-resolution-var','kpi-monetary-var','kpi-timely-var','kpi-health-var'].forEach(id => {
-            document.getElementById(id).innerHTML = '';
-        });
+        ['kpi-total-var','kpi-resolution-var','kpi-monetary-var','kpi-timely-var'].forEach(id=>document.getElementById(id).innerHTML='');
     }
 }
 
-async function loadTrend() {
-    const params = new URLSearchParams();
-    const c = C(); if (c) params.set('company', c);
-    const m = P(); if (m) params.set('months', m);
-    const cmps = getCompareCompanies();
-    if (cmps.length > 0) params.set('compare', cmps[0]); // First comparison
+async function loadMoM(){
+    const r=await fetch('/api/mom-changes'+qs());const d=await r.json();
+    const ve=document.getElementById('mom-vol');
+    ve.textContent=(d.volume_change_pct>0?'+':'')+d.volume_change_pct+'%';
+    ve.style.color=d.volume_change_pct>0?'var(--accent-red)':d.volume_change_pct<0?'var(--accent-green)':'var(--text-muted)';
+    const me=document.getElementById('mom-mon');
+    me.textContent=(d.monetary_relief_change_pct>0?'+':'')+d.monetary_relief_change_pct+'%';
+    me.style.color=d.monetary_relief_change_pct>0?'var(--accent-green)':'var(--accent-red)';
+    document.getElementById('mom-up').innerHTML=(d.top_growing_issues||[]).slice(0,3).map(i=>`<div class="d-flex justify-content-between"><span style="font-size:0.75rem;">${i.issue.substring(0,30)}</span><span style="color:var(--accent-red);font-weight:600;font-size:0.75rem;">+${i.change_pct.toFixed(0)}%</span></div>`).join('')||'<span style="color:var(--text-muted);font-size:0.75rem;">No data</span>';
+    document.getElementById('mom-down').innerHTML=(d.top_declining_issues||[]).slice(0,3).map(i=>`<div class="d-flex justify-content-between"><span style="font-size:0.75rem;">${i.issue.substring(0,30)}</span><span style="color:var(--accent-green);font-weight:600;font-size:0.75rem;">${i.change_pct.toFixed(0)}%</span></div>`).join('')||'<span style="color:var(--text-muted);font-size:0.75rem;">No data</span>';
+}
 
-    const res = await fetch('/api/monthly-volume?' + params);
-    const json = await res.json();
-    const data = json.data || [];
-    const compare = json.compare || [];
+async function loadTrend(){
+    const params=new URLSearchParams();
+    const c=C();if(c)params.set('company',c);
+    const m=P();if(m)params.set('months',m);
+    const cmps=Array.from(selectedCompares);
+    if(cmps.length>0)params.set('compare',cmps[0]);
 
-    const datasets = [];
-    datasets.push({
-        label: C() || 'All Companies', data: data.map(d => d.count),
-        borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true,
-        tension: 0.4, pointRadius: 3, pointBackgroundColor: data.map(d => d.partial ? '#f59e0b' : '#818cf8'),
-        segment: { borderDash: ctx => data[ctx.p1DataIndex]?.partial ? [6, 3] : [] },
-    });
+    const res=await fetch('/api/monthly-volume?'+params);const json=await res.json();
+    const data=json.data||[];const compare=json.compare||[];
+    const datasets=[];
+
+    // Main line
+    datasets.push({label:C()||'All Companies',data:data.map(d=>d.count),borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,0.1)',fill:true,tension:0.4,pointRadius:3,pointBackgroundColor:data.map(d=>d.partial?'#f59e0b':'#818cf8'),segment:{borderDash:ctx=>data[ctx.p1DataIndex]?.partial?[6,3]:[]}});
+
     // Forecast
-    const last = data[data.length - 1];
-    if (last && last.forecast) {
-        datasets.push({ label: 'Forecast', data: data.map((d, i) => i === data.length - 1 ? last.forecast : null),
-            borderColor: '#f59e0b', pointRadius: 7, pointStyle: 'triangle', pointBackgroundColor: '#f59e0b', showLine: false });
-    }
-    // Comparison lines (support multiple)
-    const compColors = ['#a855f7', '#f97316', '#ec4899', '#14b8a6'];
-    if (compare.length > 0) {
-        const lookup = {}; compare.forEach(d => { lookup[d.month] = d.count; });
-        datasets.push({ label: cmps[0], data: data.map(d => lookup[d.month] || null),
-            borderColor: compColors[0], borderDash: [5, 3], tension: 0.4, pointRadius: 2, fill: false });
-    }
-    // Additional comparisons via separate API calls
-    for (let i = 1; i < Math.min(cmps.length, 4); i++) {
-        try {
-            const cr = await fetch('/api/monthly-volume?company=' + encodeURIComponent(cmps[i]) + (m ? '&months=' + m : ''));
-            const cd = await cr.json();
-            const clookup = {}; (cd.data || []).forEach(d => { clookup[d.month] = d.count; });
-            datasets.push({ label: cmps[i].substring(0, 20), data: data.map(d => clookup[d.month] || null),
-                borderColor: compColors[i], borderDash: [5, 3], tension: 0.4, pointRadius: 2, fill: false });
-        } catch (e) {}
+    const last=data[data.length-1];
+    if(last&&last.forecast){
+        document.getElementById('forecast-label').style.display='inline';
+        document.getElementById('forecast-label').textContent=`| Mar forecast: ${last.forecast.toLocaleString()} (${last.count.toLocaleString()} so far)`;
+        datasets.push({label:'Forecast',data:data.map((d,i)=>i===data.length-1?last.forecast:null),borderColor:'#f59e0b',pointRadius:8,pointStyle:'triangle',pointBackgroundColor:'#f59e0b',showLine:false});
+    } else {
+        document.getElementById('forecast-label').style.display='none';
     }
 
-    D('trend');
-    charts.trend = new Chart(document.getElementById('trendChart').getContext('2d'), {
-        type: 'line', data: { labels: data.map(d => d.month), datasets },
-        options: { responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { labels: { color: '#8b8fa3', font: { size: 10 } } } },
-            scales: { x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3', maxTicksLimit: 12 } },
-                      y: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' }, beginAtZero: true } } }
-    });
+    // Comparison lines
+    const cc=['#a855f7','#f97316','#ec4899','#14b8a6'];
+    if(compare.length>0){const lk={};compare.forEach(d=>{lk[d.month]=d.count;});datasets.push({label:cmps[0]?.substring(0,20),data:data.map(d=>lk[d.month]||null),borderColor:cc[0],borderDash:[5,3],tension:0.4,pointRadius:2,fill:false});}
+    for(let i=1;i<Math.min(cmps.length,4);i++){
+        try{const cr=await fetch('/api/monthly-volume?company='+encodeURIComponent(cmps[i])+(m?'&months='+m:''));const cd=await cr.json();const lk={};(cd.data||[]).forEach(d=>{lk[d.month]=d.count;});datasets.push({label:cmps[i].substring(0,20),data:data.map(d=>lk[d.month]||null),borderColor:cc[i],borderDash:[5,3],tension:0.4,pointRadius:2,fill:false});}catch(e){}
+    }
+
+    D('trend');charts.trend=new Chart(document.getElementById('trendChart').getContext('2d'),{type:'line',data:{labels:data.map(d=>d.month),datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b8fa3',font:{size:10}}}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3',maxTicksLimit:12}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}});
 }
 
-async function loadResponse() {
-    const r = await fetch('/api/response-breakdown' + qs()); const d = await r.json();
-    const t = d.reduce((s, x) => s + x.count, 0);
-    D('response');
-    charts.response = new Chart(document.getElementById('responseChart').getContext('2d'), {
-        type: 'doughnut', data: {
-            labels: d.map(x => `${x.response} (${(x.count / t * 100).toFixed(1)}%)`),
-            datasets: [{ data: d.map(x => x.count), backgroundColor: d.map(x => (RC[x.response] || '#64748b') + 'cc'), borderWidth: 0 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { position: 'right', labels: { color: '#8b8fa3', font: { size: 9 }, padding: 6 } } } }
-    });
+async function loadResponse(){
+    const r=await fetch('/api/response-breakdown'+qs());const d=await r.json();const t=d.reduce((s,x)=>s+x.count,0);
+    D('response');charts.response=new Chart(document.getElementById('responseChart').getContext('2d'),{type:'doughnut',data:{labels:d.map(x=>`${x.response} (${(x.count/t*100).toFixed(1)}%)`),datasets:[{data:d.map(x=>x.count),backgroundColor:d.map(x=>(RC[x.response]||'#64748b')+'cc'),borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#8b8fa3',font:{size:9},padding:6}}}}});
 }
 
-// ── Section loaders ──
-const sectionLoaders = {
-    products: async () => {
-        const [pr,ir,spr,irm] = await Promise.all([
-            fetch('/api/product-breakdown'+qs()), fetch('/api/issue-breakdown'+qs()),
-            fetch('/api/sub-product-breakdown'+qs()), fetch('/api/issue-resolution-mix'+qs())
-        ]);
-        const products=await pr.json(), issues=await ir.json(), subp=await spr.json(), irmix=await irm.json();
+// Section loaders
+const SL={
+    top5:async()=>{
+        const r=await fetch('/api/top5-comparison'+qs());const d=await r.json();
+        const sections=[
+            {title:'Top Products',data:d.products,key:'product',keyAlt:'name'},
+            {title:'Top Issues',data:d.issues,key:'issue',keyAlt:'name'},
+            {title:'Top Sub-Products',data:d.sub_products,key:'name'},
+            {title:'Top Sub-Issues',data:d.sub_issues,key:'name'},
+            {title:'Top States',data:d.states,key:'state'},
+            {title:'Top Channels',data:d.channels,key:'channel'},
+            {title:'Consumer Tags',data:d.tags,key:'name'},
+            {title:'Public Responses',data:d.public_responses,key:'name'},
+            {title:'Resolution Types',data:d.responses,key:'response',keyAlt:'name'},
+        ];
+        document.getElementById('top5-content').innerHTML='<div class="top5-grid">'+sections.map(s=>{
+            const items=(s.data||[]).slice(0,5);
+            if(!items.length)return '';
+            return `<div class="top5-card"><h6><i class="fas fa-list me-1"></i>${s.title}</h6>${items.map((it,i)=>{
+                const name=it[s.key]||it[s.keyAlt||'name']||'Unknown';
+                const count=it.count||0;
+                return `<div class="top5-item"><span class="name">${i+1}. ${name.substring(0,40)}</span><span class="count">${fmt(count)}</span></div>`;
+            }).join('')}</div>`;
+        }).join('')+'</div>';
+    },
+    products:async()=>{
+        const[pr,ir,spr,irm]=await Promise.all([fetch('/api/product-breakdown'+qs()),fetch('/api/issue-breakdown'+qs()),fetch('/api/sub-product-breakdown'+qs()),fetch('/api/issue-resolution-mix'+qs())]);
+        const products=await pr.json(),issues=await ir.json(),subp=await spr.json(),irmix=await irm.json();
         const pt=products.reduce((s,x)=>s+x.count,0);
-        D('product'); charts.product = new Chart(document.getElementById('productChart').getContext('2d'), {
-            type:'bar', data:{labels:products.map(x=>`${x.product} (${(x.count/pt*100).toFixed(0)}%)`),datasets:[{data:products.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},
-            options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}
-        });
-        D('issue'); charts.issue = new Chart(document.getElementById('issueChart').getContext('2d'), {
-            type:'bar', data:{labels:issues.map(x=>x.issue.length>35?x.issue.substring(0,35)+'...':x.issue),datasets:[{data:issues.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},
-            options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}
-        });
-        D('subProduct'); charts.subProduct = new Chart(document.getElementById('subProductChart').getContext('2d'), {
-            type:'bar', data:{labels:subp.slice(0,10).map(x=>x.sub_product.length>30?x.sub_product.substring(0,30)+'...':x.sub_product),datasets:[{data:subp.slice(0,10).map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},
-            options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}
-        });
-        // Issue resolution mix
-        const irIssues = Object.keys(irmix).slice(0,10);
-        const resps = ['Closed with explanation','Closed with monetary relief','Closed with non-monetary relief','In progress'];
-        D('issueRes'); charts.issueRes = new Chart(document.getElementById('issueResChart').getContext('2d'), {
-            type:'bar', data:{labels:irIssues.map(i=>i.length>30?i.substring(0,30)+'...':i),datasets:resps.map(r=>({label:r,data:irIssues.map(i=>irmix[i][r]||0),backgroundColor:(RC[r]||'#64748b')+'99'}))},
-            options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:8}}}},scales:{x:{stacked:true,grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}}}}
-        });
+        D('product');charts.product=new Chart(document.getElementById('productChart').getContext('2d'),{type:'bar',data:{labels:products.map(x=>`${x.product} (${(x.count/pt*100).toFixed(0)}%)`),datasets:[{data:products.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
+        D('issue');charts.issue=new Chart(document.getElementById('issueChart').getContext('2d'),{type:'bar',data:{labels:issues.map(x=>x.issue.length>35?x.issue.substring(0,35)+'...':x.issue),datasets:[{data:issues.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
+        D('subProduct');charts.subProduct=new Chart(document.getElementById('subProductChart').getContext('2d'),{type:'bar',data:{labels:subp.slice(0,10).map(x=>x.sub_product.length>30?x.sub_product.substring(0,30)+'...':x.sub_product),datasets:[{data:subp.slice(0,10).map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
+        const irIs=Object.keys(irmix).slice(0,10),resps=['Closed with explanation','Closed with monetary relief','Closed with non-monetary relief','In progress'];
+        D('issueRes');charts.issueRes=new Chart(document.getElementById('issueResChart').getContext('2d'),{type:'bar',data:{labels:irIs.map(i=>i.length>30?i.substring(0,30)+'...':i),datasets:resps.map(r=>({label:r,data:irIs.map(i=>irmix[i][r]||0),backgroundColor:(RC[r]||'#64748b')+'99'}))},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:8}}}},scales:{x:{stacked:true,grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}}}}});
     },
-    words: async () => {
-        const [wr,sr,tr,twr,nsr] = await Promise.all([
-            fetch('/api/text/top-words'+qs()), fetch('/api/text/sentiment'+qs()),
-            fetch('/api/text/themes'+qs()), fetch('/api/text/word-trends'+qs()),
-            fetch('/api/text/narrative-stats'+qs())
-        ]);
-        const words=await wr.json(), sent=await sr.json(), themes=await tr.json();
-        let wordTrends=[], nstats={};
-        try { wordTrends = await twr.json(); } catch(e) {}
-        try { nstats = await nsr.json(); } catch(e) {}
-
-        const sc = sent.sentiment_score||0;
-        document.getElementById('s-score').textContent = sc>0?'+'+sc.toFixed(2):sc.toFixed(2);
-        document.getElementById('s-score').style.color = sc>0?'var(--accent-green)':'var(--accent-red)';
-        document.getElementById('s-neg').textContent = fmt(sent.negative_count);
-        document.getElementById('s-pos').textContent = fmt(sent.positive_count);
-        document.getElementById('s-total').textContent = fmt(nstats.total_with_narrative||0);
-
-        document.getElementById('neg-words').innerHTML = (sent.top_negative_words||[]).map(w =>
-            `<span style="display:inline-block;background:rgba(239,68,68,0.15);padding:0.2rem 0.5rem;border-radius:6px;margin:2px;font-weight:600;color:var(--accent-red);">${w.word} (${fmt(w.count)})</span>`).join('');
-        document.getElementById('pos-words').innerHTML = (sent.top_positive_words||[]).map(w =>
-            `<span style="display:inline-block;background:rgba(34,197,94,0.15);padding:0.2rem 0.5rem;border-radius:6px;margin:2px;font-weight:600;color:var(--accent-green);">${w.word} (${fmt(w.count)})</span>`).join('');
-
-        // Top words
-        const topW = words.slice(0,20);
-        D('words'); charts.words = new Chart(document.getElementById('wordsChart').getContext('2d'), {
-            type:'bar', data:{labels:topW.map(w=>w.word),datasets:[{data:topW.map(w=>w.count),backgroundColor:'#6366f199',borderRadius:4}]},
-            options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}
-        });
-        // Themes
-        D('themes'); charts.themes = new Chart(document.getElementById('themesChart').getContext('2d'), {
-            type:'bar', data:{labels:themes.map(t=>`${t.theme} (${t.percentage}%)`),datasets:[{data:themes.map(t=>t.count),backgroundColor:CL.slice(0,themes.length).map(c=>c+'99'),borderRadius:6}]},
-            options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8},maxRotation:45}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}
-        });
-        // Word trends over time
-        if (wordTrends.length > 0) {
-            const months = wordTrends[0].months?.map(m => m.month) || [];
-            D('wordTrend'); charts.wordTrend = new Chart(document.getElementById('wordTrendChart').getContext('2d'), {
-                type:'line', data:{labels:months,datasets:wordTrends.slice(0,8).map((w,i)=>({
-                    label:w.word, data:w.months.map(m=>m.count), borderColor:CL[i],
-                    tension:0.4, pointRadius:2, fill:false,
-                }))},
-                options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b8fa3',font:{size:9}}}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}
-            });
-        }
-        // Trending words
-        try {
-            const tr2 = await fetch('/api/text/trending-words'+qs());
-            const trending = await tr2.json();
-            document.getElementById('trending-up').innerHTML = (trending.trending_up||[]).slice(0,5).map(w =>
-                `<div class="d-flex justify-content-between py-1"><span>${w.word}</span><span style="color:var(--accent-red);font-weight:700;">+${w.change_pct.toFixed(0)}%</span></div>`).join('') || '<span style="color:var(--text-muted);">No significant trends</span>';
-            document.getElementById('trending-down').innerHTML = (trending.trending_down||[]).slice(0,5).map(w =>
-                `<div class="d-flex justify-content-between py-1"><span>${w.word}</span><span style="color:var(--accent-green);font-weight:700;">${w.change_pct.toFixed(0)}%</span></div>`).join('') || '<span style="color:var(--text-muted);">No significant trends</span>';
-        } catch(e) {}
+    words:async()=>{
+        const[wr,sr,tr,twr,nsr]=await Promise.all([fetch('/api/text/top-words'+qs()),fetch('/api/text/sentiment'+qs()),fetch('/api/text/themes'+qs()),fetch('/api/text/word-trends'+qs()),fetch('/api/text/narrative-stats'+qs())]);
+        const words=await wr.json(),sent=await sr.json(),themes=await tr.json();
+        let wordTrends=[],nstats={};try{wordTrends=await twr.json();}catch(e){}try{nstats=await nsr.json();}catch(e){}
+        const sc=sent.sentiment_score||0;
+        document.getElementById('s-score').textContent=sc>0?'+'+sc.toFixed(2):sc.toFixed(2);document.getElementById('s-score').style.color=sc>0?'var(--accent-green)':'var(--accent-red)';
+        document.getElementById('s-neg').textContent=fmt(sent.negative_count);document.getElementById('s-pos').textContent=fmt(sent.positive_count);document.getElementById('s-total').textContent=fmt(nstats.total_with_narrative||0);
+        document.getElementById('neg-words').innerHTML=(sent.top_negative_words||[]).map(w=>`<span style="display:inline-block;background:rgba(239,68,68,0.15);padding:0.2rem 0.5rem;border-radius:6px;margin:2px;font-weight:600;font-size:0.8rem;color:var(--accent-red);">${w.word} (${fmt(w.count)})</span>`).join('');
+        document.getElementById('pos-words').innerHTML=(sent.top_positive_words||[]).map(w=>`<span style="display:inline-block;background:rgba(34,197,94,0.15);padding:0.2rem 0.5rem;border-radius:6px;margin:2px;font-weight:600;font-size:0.8rem;color:var(--accent-green);">${w.word} (${fmt(w.count)})</span>`).join('');
+        const topW=words.slice(0,20);
+        D('words');charts.words=new Chart(document.getElementById('wordsChart').getContext('2d'),{type:'bar',data:{labels:topW.map(w=>w.word),datasets:[{data:topW.map(w=>w.count),backgroundColor:'#6366f199',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
+        D('themes');charts.themes=new Chart(document.getElementById('themesChart').getContext('2d'),{type:'bar',data:{labels:themes.map(t=>`${t.theme} (${t.percentage}%)`),datasets:[{data:themes.map(t=>t.count),backgroundColor:CL.slice(0,themes.length).map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8},maxRotation:45}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}});
+        if(wordTrends.length>0){const months=wordTrends[0].months?.map(m=>m.month)||[];D('wordTrend');charts.wordTrend=new Chart(document.getElementById('wordTrendChart').getContext('2d'),{type:'line',data:{labels:months,datasets:wordTrends.slice(0,8).map((w,i)=>({label:w.word,data:w.months.map(m=>m.count),borderColor:CL[i],tension:0.4,pointRadius:2,fill:false}))},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b8fa3',font:{size:9}}}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}});}
+        try{const tr2=await fetch('/api/text/trending-words'+qs());const td=await tr2.json();
+        document.getElementById('trending-up').innerHTML=(td.trending_up||[]).slice(0,6).map(w=>`<div class="d-flex justify-content-between py-1" style="border-bottom:1px solid var(--border-color);"><span>${w.word}</span><span style="color:var(--accent-red);font-weight:700;">+${w.change_pct.toFixed(0)}%</span></div>`).join('')||'<span style="color:var(--text-muted);">No trends</span>';
+        document.getElementById('trending-down').innerHTML=(td.trending_down||[]).slice(0,6).map(w=>`<div class="d-flex justify-content-between py-1" style="border-bottom:1px solid var(--border-color);"><span>${w.word}</span><span style="color:var(--accent-green);font-weight:700;">${w.change_pct.toFixed(0)}%</span></div>`).join('')||'<span style="color:var(--text-muted);">No trends</span>';}catch(e){}
     },
-    geo: async () => {
-        const [sr,cr] = await Promise.all([fetch('/api/state-breakdown'+qs()),fetch('/api/submission-channels'+qs())]);
-        const states=await sr.json(), channels=await cr.json();
-        D('state'); charts.state = new Chart(document.getElementById('stateChart').getContext('2d'), {
-            type:'bar', data:{labels:states.slice(0,15).map(x=>x.state),datasets:[{data:states.slice(0,15).map(x=>x.count),backgroundColor:'#6366f199',borderRadius:6}]},
-            options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8'}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}
-        });
-        const ct=channels.reduce((s,x)=>s+x.count,0);
-        D('channel'); charts.channel = new Chart(document.getElementById('channelChart').getContext('2d'), {
-            type:'doughnut', data:{labels:channels.map(x=>`${x.channel} (${(x.count/ct*100).toFixed(1)}%)`),datasets:[{data:channels.map(x=>x.count),backgroundColor:CL.slice(0,channels.length).map(c=>c+'cc'),borderWidth:0}]},
-            options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3',font:{size:10},padding:8}}}}
-        });
+    geo:async()=>{
+        const[sr,cr]=await Promise.all([fetch('/api/state-breakdown'+qs()),fetch('/api/submission-channels'+qs())]);const states=await sr.json(),channels=await cr.json();
+        D('state');charts.state=new Chart(document.getElementById('stateChart').getContext('2d'),{type:'bar',data:{labels:states.slice(0,15).map(x=>x.state),datasets:[{data:states.slice(0,15).map(x=>x.count),backgroundColor:'#6366f199',borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8'}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}});
+        const ct=channels.reduce((s,x)=>s+x.count,0);D('channel');charts.channel=new Chart(document.getElementById('channelChart').getContext('2d'),{type:'doughnut',data:{labels:channels.map(x=>`${x.channel} (${(x.count/ct*100).toFixed(1)}%)`),datasets:[{data:channels.map(x=>x.count),backgroundColor:CL.slice(0,channels.length).map(c=>c+'cc'),borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3',font:{size:10},padding:8}}}}});
     },
-    banks: async () => {
-        const r = await fetch('/api/bank-comparison'); const d = await r.json();
-        const gc = {A:'var(--accent-green)',B:'var(--accent-cyan)',C:'var(--accent-amber)',D:'var(--accent-orange)',F:'var(--accent-red)'};
-        const selected = C();
-        document.getElementById('bankTableBody').innerHTML = d.map((b,i) => {
-            const highlight = b.company === selected;
-            return `<tr style="${highlight?'background:rgba(99,102,241,0.12);':''}">
-                <td style="color:var(--text-muted);font-weight:600;">${i+1}</td>
-                <td style="font-weight:${highlight?'800':'600'};">${highlight?'&#9733; ':''}${b.company}</td>
-                <td>${fmt(b.total_complaints)}</td>
-                <td><span style="color:${b.resolution_rate>85?'var(--accent-green)':'var(--accent-amber)'};font-weight:600;">${b.resolution_rate}%</span></td>
-                <td>${b.monetary_relief_rate}%</td><td>${b.timely_rate}%</td>
-                <td style="font-weight:700;">${b.health_score}</td>
-                <td><span style="color:${gc[b.health_grade]||'var(--text-muted)'};font-weight:800;font-size:1.1rem;">${b.health_grade}</span></td>
-            </tr>`;
-        }).join('');
+    banks:async()=>{
+        const r=await fetch('/api/bank-comparison');const d=await r.json();const gc={A:'var(--accent-green)',B:'var(--accent-cyan)',C:'var(--accent-amber)',D:'var(--accent-orange)',F:'var(--accent-red)'};const sel=C();
+        document.getElementById('bankTableBody').innerHTML=d.map((b,i)=>{const hl=b.company===sel;return `<tr style="${hl?'background:rgba(99,102,241,0.12);':''}"><td style="color:var(--text-muted);font-weight:600;">${i+1}</td><td style="font-weight:${hl?'800':'600'};">${hl?'&#9733; ':''}${b.company}</td><td>${fmt(b.total_complaints)}</td><td><span style="color:${b.resolution_rate>85?'var(--accent-green)':'var(--accent-amber)'};font-weight:600;">${b.resolution_rate}%</span></td><td>${b.monetary_relief_rate}%</td><td>${b.timely_rate}%</td><td style="font-weight:700;">${b.health_score}</td><td><span style="color:${gc[b.health_grade]||'var(--text-muted)'};font-weight:800;font-size:1.1rem;">${b.health_grade}</span></td></tr>`;}).join('');
     },
-    mom: async () => {
-        const r = await fetch('/api/mom-changes'+qs()); const d = await r.json();
-        const ve = document.getElementById('mom-vol');
-        ve.textContent = (d.volume_change_pct>0?'+':'')+d.volume_change_pct+'%';
-        ve.style.color = d.volume_change_pct>0?'var(--accent-red)':d.volume_change_pct<0?'var(--accent-green)':'var(--text-muted)';
-        const me = document.getElementById('mom-mon');
-        me.textContent = (d.monetary_relief_change_pct>0?'+':'')+d.monetary_relief_change_pct+'%';
-        me.style.color = d.monetary_relief_change_pct>0?'var(--accent-green)':'var(--accent-red)';
-        document.getElementById('mom-up').innerHTML = (d.top_growing_issues||[]).slice(0,4).map(i =>
-            `<div class="d-flex justify-content-between"><span>${i.issue.substring(0,25)}</span><span style="color:var(--accent-red);font-weight:600;">+${i.change_pct.toFixed(0)}%</span></div>`).join('') || '<span style="color:var(--text-muted);">No data</span>';
-        document.getElementById('mom-down').innerHTML = (d.top_declining_issues||[]).slice(0,4).map(i =>
-            `<div class="d-flex justify-content-between"><span>${i.issue.substring(0,25)}</span><span style="color:var(--accent-green);font-weight:600;">${i.change_pct.toFixed(0)}%</span></div>`).join('') || '<span style="color:var(--text-muted);">No data</span>';
+    sources:async()=>{
+        const r=await fetch('/api/data-sources');const d=await r.json();
+        const cfpb=d.cfpb||{};
+        document.getElementById('sources-content').innerHTML=`
+            <div class="row g-3">
+                <div class="col-md-6"><div class="card-cw p-3">
+                    <h6 style="font-weight:700;"><i class="fas fa-landmark me-2" style="color:var(--accent-indigo-light);"></i>CFPB Consumer Complaint Database</h6>
+                    <div style="font-size:0.85rem;color:var(--text-secondary);">
+                        <div class="d-flex justify-content-between mb-1"><span>Total Complaints</span><span style="font-weight:700;">${fmt(cfpb.complaints)}</span></div>
+                        <div class="d-flex justify-content-between mb-1"><span>Companies Tracked</span><span style="font-weight:700;">${cfpb.companies}</span></div>
+                        <div class="d-flex justify-content-between mb-1"><span>Monthly Volume Records</span><span style="font-weight:700;">${cfpb.monthly_volumes}</span></div>
+                        <div class="d-flex justify-content-between mb-1"><span>Date Range</span><span>${cfpb.date_range?cfpb.date_range[0]+' to '+cfpb.date_range[1]:'N/A'}</span></div>
+                        <div class="mt-2"><strong>Fields (${cfpb.fields?.length||0}):</strong><br><span style="font-size:0.75rem;">${(cfpb.fields||[]).join(', ')}</span></div>
+                    </div>
+                </div></div>
+                <div class="col-md-6">
+                    <div class="card-cw p-3 mb-3"><h6 style="font-weight:700;"><i class="fas fa-university me-2" style="color:var(--accent-green);"></i>FDIC BankFind</h6><div style="font-size:0.85rem;color:var(--text-secondary);">${d.fdic?.description||''}<br><span class="badge-active mt-1">${d.fdic?.status}</span></div></div>
+                    <div class="card-cw p-3 mb-3"><h6 style="font-weight:700;"><i class="fas fa-chart-bar me-2" style="color:var(--accent-cyan);"></i>SEC EDGAR</h6><div style="font-size:0.85rem;color:var(--text-secondary);">${d.sec_edgar?.description||''}<br><span class="badge-active mt-1">${d.sec_edgar?.status}</span></div></div>
+                    <div class="card-cw p-3"><h6 style="font-weight:700;"><i class="fas fa-shield-alt me-2" style="color:var(--accent-purple);"></i>FINRA BrokerCheck</h6><div style="font-size:0.85rem;color:var(--text-secondary);">${d.finra?.description||''}<br><span class="badge-trial mt-1">${d.finra?.status}</span></div></div>
+                </div>
+            </div>`;
     },
 };
 
-// Lazy load on section open
-document.querySelectorAll('.collapse[data-section]').forEach(el => {
-    el.addEventListener('show.bs.collapse', function() {
-        const sec = this.dataset.section;
-        if (sectionLoaders[sec]) sectionLoaders[sec]();
-    });
-});
+document.querySelectorAll('.collapse[data-section]').forEach(el=>{el.addEventListener('show.bs.collapse',function(){const s=this.dataset.section;if(SL[s])SL[s]();});});
 
-function loadAll() {
-    loadKPIs(); loadTrend(); loadResponse();
-    // Reload any open sections
-    document.querySelectorAll('.collapse.show[data-section]').forEach(el => {
-        const sec = el.dataset.section;
-        if (sectionLoaders[sec]) sectionLoaders[sec]();
-    });
+function loadAll(){
+    loadKPIs();loadMoM();loadTrend();loadResponse();
+    document.querySelectorAll('.collapse.show[data-section]').forEach(el=>{const s=el.dataset.section;if(SL[s])SL[s]();});
 }
-
-loadCompanies().then(() => loadAll());
+loadCompanies().then(()=>loadAll());
 </script>
 {% endblock %}
