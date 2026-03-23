@@ -669,17 +669,27 @@ def create_app():
         if months_back and len(results) > months_back:
             results = results[-months_back:]
 
-        # Mark last month as partial and add forecast
+        # Mark last month as partial and compute smart forecast
         if results:
             today = date.today()
             current_month = f"{today.year}-{today.month:02d}"
             if results[-1]['month'] == current_month:
                 results[-1]['partial'] = True
-                # Forecast: extrapolate based on days elapsed
+                # Smart forecast: blend of extrapolation + avg of last 3 full months
+                full_months = [r for r in results[:-1] if not r.get('normalized')]
+                if len(full_months) >= 3:
+                    avg_last3 = sum(m['count'] for m in full_months[-3:]) / 3
+                elif len(full_months) >= 1:
+                    avg_last3 = sum(m['count'] for m in full_months[-3:]) / len(full_months[-3:])
+                else:
+                    avg_last3 = results[-1]['count']
+                # Weight: 70% historical avg + 30% extrapolation
                 days_in_month = 31
                 days_elapsed = today.day
-                if days_elapsed > 0:
-                    results[-1]['forecast'] = int(results[-1]['count'] * days_in_month / days_elapsed)
+                extrapolated = int(results[-1]['count'] * days_in_month / max(days_elapsed, 1))
+                forecast = int(avg_last3 * 0.7 + extrapolated * 0.3)
+                results[-1]['forecast'] = forecast
+                results[-1]['actual_so_far'] = results[-1]['count']
 
         # Comparison company data
         compare_data = None
