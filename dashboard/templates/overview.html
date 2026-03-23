@@ -251,42 +251,35 @@ async function loadTrend(){
     const last=data[data.length-1];
     const hasForecast=last&&last.forecast;
 
-    // Main solid line - goes up to actual partial month value
-    // For the last point, show the actual (partial) count, not forecast
-    const mainData=data.map(d=>d.count);
+    // Main solid line - for the last point, use FORECAST value so line goes to forecast
+    const mainData=data.map((d,i)=>{
+        if(hasForecast && i===data.length-1) return last.forecast;
+        return d.count;
+    });
     ds.push({
         label:C()||'All Companies',
         data:mainData,
         borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,0.08)',fill:true,
-        tension:0.4,pointRadius:data.map(d=>d.partial?0:3),
-        pointBackgroundColor:'#818cf8',borderWidth:2,
+        tension:0.4,pointRadius:3,
+        pointBackgroundColor:data.map(d=>d.partial?'#f59e0b':'#818cf8'),
+        pointStyle:data.map(d=>d.partial?'star':'circle'),
+        borderWidth:2,
     });
 
     if(hasForecast){
         document.getElementById('fc-label').textContent=`| Forecast: ~${last.forecast.toLocaleString()} (${(last.actual_so_far||last.count).toLocaleString()} actual so far)`;
 
-        // Actual partial month as triangle
+        // Actual partial month value as triangle (below the forecast point)
         ds.push({
             label:'Actual (partial)',
-            data:data.map((d,i)=>i===data.length-1?d.count:null),
-            borderColor:'transparent',pointRadius:7,pointStyle:'triangle',
-            pointBackgroundColor:'#f59e0b',showLine:false,
+            data:data.map((d,i)=>i===data.length-1?last.actual_so_far||d.count:null),
+            borderColor:'transparent',pointRadius:6,pointStyle:'triangle',
+            pointBackgroundColor:'#ef4444',showLine:false,
         });
 
-        // Dashed connector from last full month to forecast
-        // Create data array: null for all except last 2 points (prev month value -> forecast)
-        const connectorData=data.map((d,i)=>{
-            if(i===data.length-2) return d.count;  // last full month
-            if(i===data.length-1) return last.forecast;  // forecast
-            return null;
-        });
-        ds.push({
-            label:'Forecast',
-            data:connectorData,
-            borderColor:'#f59e0b',borderDash:[4,4],borderWidth:2,
-            tension:0.4,pointRadius:data.map((d,i)=>i===data.length-1?8:0),
-            pointStyle:'star',pointBackgroundColor:'#f59e0b',fill:false,
-        });
+        // No separate connector needed - main line goes to forecast
+        // Remove the old forecast dataset
+        void(0);
     } else document.getElementById('fc-label').textContent='';
 
     // Comparison lines - use different line styles (long dash, not short dash like forecast)

@@ -746,106 +746,91 @@ def create_app():
         company = request.args.get('company')
         return jsonify(get_narrative_stats(company=company))
 
+    _top5_cache = {'data': {}, 'time': {}}
+
     @app.route('/api/top5-comparison')
     @login_required
     def api_top5_comparison():
-        """Top 5 analysis with MoM comparison across all dimensions."""
-        from services.analytics import get_product_breakdown, get_issue_breakdown, get_state_breakdown, get_submission_channels, get_response_breakdown
+        """Top 5 analysis with batch MoM comparison. Cached 5 min."""
+        import time as _time
         from sqlalchemy import func, desc
 
-        company = request.args.get('company')
+        company = request.args.get('company') or ''
+        cache_key = company
+        if cache_key in _top5_cache['data'] and _time.time() - _top5_cache['time'].get(cache_key, 0) < 300:
+            return jsonify(_top5_cache['data'][cache_key])
 
-        # Get date ranges for current and prior month
         today = date.today()
-        cur_start = today.replace(day=1)
-        prev_end = cur_start - timedelta(days=1)
+        prev_end = today.replace(day=1) - timedelta(days=1)
         prev_start = prev_end.replace(day=1)
         prev2_end = prev_start - timedelta(days=1)
         prev2_start = prev2_end.replace(day=1)
 
-        def _add_mom(items, field_name, key_name):
-            """Add prior month count and MoM change to each item."""
-            for item in items:
-                name = item.get(key_name) or item.get('name', '')
-                # Current month count
-                cq = Complaint.query.filter(
-                    Complaint.date_received >= prev_start,
-                    Complaint.date_received <= prev_end,
-                    getattr(Complaint, field_name) == name,
-                )
-                if company:
-                    cq = cq.filter(Complaint.company == company)
-                cur_count = cq.count()
+        def _batch_top5(field, filter_null=True):
+            """Single function: get top 5 overall + batch MoM in 3 queries total."""
+            col = getattr(Complaint, field)
+            # Overall top 5
+            q = db.session.query(col, func.count().label('count'))
+            if company:
+                q = q.filter(Complaint.company == company)
+            if filter_null:
+                q = q.filter(col.isnot(None), col != '')
+            q = q.group_by(col).order_by(desc('count')).limit(5)
+            items = [{'name': r[0] or '', 'count': r[1]} for r in q.all()]
 
-                # Prior month count
-                pq = Complaint.query.filter(
-                    Complaint.date_received >= prev2_start,
-                    Complaint.date_received <= prev2_end,
-                    getattr(Complaint, field_name) == name,
-                )
-                if company:
-                    pq = pq.filter(Complaint.company == company)
-                prev_count = pq.count()
+            names = [it['name'] for it in items]
+            if not names:
+                return items
 
-                item['cur_month'] = cur_count
-                item['prev_month'] = prev_count
-                item['mom_change'] = round((cur_count - prev_count) / prev_count * 100, 0) if prev_count else 0
+            # Prev month counts (1 batch query)
+            pq = db.session.query(col, func.count().label('c')).filter(
+                Complaint.date_received >= prev_start, Complaint.date_received <= prev_end, col.in_(names))
+            if company:
+                pq = pq.filter(Complaint.company == company)
+            prev_counts = {r[0]: r[1] for r in pq.group_by(col).all()}
+
+            # Prev2 month counts (1 batch query)
+            p2q = db.session.query(col, func.count().label('c')).filter(
+                Complaint.date_received >= prev2_start, Complaint.date_received <= prev2_end, col.in_(names))
+            if company:
+                p2q = p2q.filter(Complaint.company == company)
+            prev2_counts = {r[0]: r[1] for r in p2q.group_by(col).all()}
+
+            for it in items:
+                n = it['name']
+                cur = prev_counts.get(n, 0)
+                prev = prev2_counts.get(n, 0)
+                it['cur_month'] = cur
+                it['prev_month'] = prev
+                it['mom_change'] = round((cur - prev) / prev * 100, 0) if prev else (100 if cur else 0)
             return items
 
-        result = {}
+        result = {
+            'products': _batch_top5('product'),
+            'issues': _batch_top5('issue'),
+            'sub_products': _batch_top5('sub_product'),
+            'sub_issues': _batch_top5('sub_issue'),
+            'states': _batch_top5('state'),
+            'responses': _batch_top5('company_response'),
+            'channels': _batch_top5('submitted_via'),
+            'tags': _batch_top5('tags'),
+            'public_responses': _batch_top5('company_public_response'),
+        }
 
-        # Top 5 products
-        products = get_product_breakdown(company=company)[:5]
-        result['products'] = _add_mom(products, 'product', 'product')
+        # Fix key names for consistency with frontend
+        for item in result['products']:
+            item['product'] = item['name']
+        for item in result['issues']:
+            item['issue'] = item['name']
+        for item in result['states']:
+            item['state'] = item['name']
+        for item in result['responses']:
+            item['response'] = item['name']
+        for item in result['channels']:
+            item['channel'] = item['name']
 
-        # Top 5 issues
-        issues = get_issue_breakdown(company=company, limit=5)
-        result['issues'] = _add_mom(issues, 'issue', 'issue')
-
-        # Top 5 sub-products
-        q = db.session.query(Complaint.sub_product, func.count().label('count'))
-        if company:
-            q = q.filter(Complaint.company == company)
-        q = q.filter(Complaint.sub_product.isnot(None), Complaint.sub_product != '')
-        q = q.group_by(Complaint.sub_product).order_by(desc('count')).limit(5)
-        result['sub_products'] = _add_mom([{'name': r.sub_product, 'count': r.count} for r in q.all()], 'sub_product', 'name')
-
-        # Top 5 sub-issues
-        q = db.session.query(Complaint.sub_issue, func.count().label('count'))
-        if company:
-            q = q.filter(Complaint.company == company)
-        q = q.filter(Complaint.sub_issue.isnot(None), Complaint.sub_issue != '')
-        q = q.group_by(Complaint.sub_issue).order_by(desc('count')).limit(5)
-        result['sub_issues'] = _add_mom([{'name': r.sub_issue, 'count': r.count} for r in q.all()], 'sub_issue', 'name')
-
-        # Top 5 states
-        states = get_state_breakdown(company=company, limit=5)
-        result['states'] = _add_mom(states, 'state', 'state')
-
-        # Top 5 company responses
-        responses = get_response_breakdown(company=company)[:5]
-        result['responses'] = _add_mom(responses, 'company_response', 'response')
-
-        # Top 5 channels
-        channels = get_submission_channels(company=company)[:5]
-        result['channels'] = _add_mom(channels, 'submitted_via', 'channel')
-
-        # Top 5 tags (skip MoM - too few data points)
-        q = db.session.query(Complaint.tags, func.count().label('count'))
-        if company:
-            q = q.filter(Complaint.company == company)
-        q = q.filter(Complaint.tags.isnot(None), Complaint.tags != '', Complaint.tags != 'None')
-        q = q.group_by(Complaint.tags).order_by(desc('count')).limit(5)
-        result['tags'] = [{'name': r.tags, 'count': r.count} for r in q.all()]
-
-        # Top 5 public responses
-        q = db.session.query(Complaint.company_public_response, func.count().label('count'))
-        if company:
-            q = q.filter(Complaint.company == company)
-        q = q.filter(Complaint.company_public_response.isnot(None), Complaint.company_public_response != '')
-        q = q.group_by(Complaint.company_public_response).order_by(desc('count')).limit(5)
-        result['public_responses'] = [{'name': r.company_public_response[:60], 'count': r.count} for r in q.all()]
-
+        _top5_cache['data'][cache_key] = result
+        _top5_cache['time'][cache_key] = _time.time()
         return jsonify(result)
 
     @app.route('/api/data-sources')
