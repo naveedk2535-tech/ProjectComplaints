@@ -641,6 +641,9 @@ def create_app():
     def api_monthly_volume():
         from models.database import MonthlyVolume
         company = request.args.get('company')
+        months_back = request.args.get('months', type=int)
+        compare = request.args.get('compare')  # company name to compare
+
         q = db.session.query(
             MonthlyVolume.month,
             db.func.sum(MonthlyVolume.total_complaints).label('total')
@@ -648,7 +651,49 @@ def create_app():
         if company:
             q = q.filter(MonthlyVolume.company == company)
         q = q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
-        return jsonify([{'month': r.month, 'count': r.total} for r in q.all()])
+        raw = q.all()
+
+        results = [{'month': r.month, 'count': r.total} for r in raw]
+
+        # Normalize outliers (if a month is >2.5x the median of neighbors, cap it)
+        if len(results) > 2:
+            for i in range(1, len(results) - 1):
+                prev_val = results[i-1]['count']
+                next_val = results[i+1]['count']
+                avg_neighbors = (prev_val + next_val) / 2
+                if results[i]['count'] > avg_neighbors * 2.5:
+                    results[i]['count'] = int(avg_neighbors)
+                    results[i]['normalized'] = True
+
+        # Filter to last N months if requested
+        if months_back and len(results) > months_back:
+            results = results[-months_back:]
+
+        # Mark last month as partial and add forecast
+        if results:
+            today = date.today()
+            current_month = f"{today.year}-{today.month:02d}"
+            if results[-1]['month'] == current_month:
+                results[-1]['partial'] = True
+                # Forecast: extrapolate based on days elapsed
+                days_in_month = 31
+                days_elapsed = today.day
+                if days_elapsed > 0:
+                    results[-1]['forecast'] = int(results[-1]['count'] * days_in_month / days_elapsed)
+
+        # Comparison company data
+        compare_data = None
+        if compare:
+            cq = db.session.query(
+                MonthlyVolume.month,
+                db.func.sum(MonthlyVolume.total_complaints).label('total')
+            ).filter(MonthlyVolume.company == compare)
+            cq = cq.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
+            compare_data = [{'month': r.month, 'count': r.total} for r in cq.all()]
+            if months_back and len(compare_data) > months_back:
+                compare_data = compare_data[-months_back:]
+
+        return jsonify({'data': results, 'compare': compare_data})
 
     @app.route('/api/monthly-volume-by-company')
     @login_required

@@ -6,40 +6,91 @@
     <!-- Header -->
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 style="font-weight: 800;"><i class="fas fa-chart-line me-2"></i>Overview Dashboard</h2>
-        <div class="d-flex gap-2 align-items-center">
-            <select id="companyFilter" class="form-select-cw" style="width: 280px;" onchange="loadAll()">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select id="companyFilter" class="form-select-cw" style="width: 260px;" onchange="loadAll()">
                 <option value="">All Companies</option>
+            </select>
+            <select id="compareFilter" class="form-select-cw" style="width: 220px;" onchange="loadTrend()">
+                <option value="">Compare with...</option>
+            </select>
+            <select id="periodFilter" class="form-select-cw" style="width: 140px;" onchange="loadAll()">
+                <option value="">All Time</option>
+                <option value="12">Last 12 Months</option>
+                <option value="6">Last 6 Months</option>
+                <option value="3">Last Quarter</option>
             </select>
             {% if current_user and current_user.is_premium %}
             <a id="exportBtn" href="/api/export/monthly-data" class="btn btn-cw-outline btn-sm"><i class="fas fa-download me-1"></i>Export</a>
-            {% else %}
-            <a href="{{ url_for('pricing') }}" class="btn btn-cw-outline btn-sm"><i class="fas fa-lock me-1"></i>Export <span class="badge-premium ms-1">PRO</span></a>
             {% endif %}
         </div>
     </div>
 
-    <!-- KPI Cards -->
+    <!-- KPI Cards with context -->
     <div class="row g-3 mb-4">
-        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-indigo"></div><div class="ps-3"><div class="kpi-value" id="kpi-total" style="font-size:1.6rem; color: var(--accent-indigo-light);">--</div><div class="kpi-label">Total Complaints</div></div></div></div>
-        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-green"></div><div class="ps-3"><div class="kpi-value" id="kpi-resolution" style="font-size:1.6rem; color: var(--accent-green);">--</div><div class="kpi-label">Resolution Rate</div></div></div></div>
-        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-cyan"></div><div class="ps-3"><div class="kpi-value" id="kpi-monetary" style="font-size:1.6rem; color: var(--accent-cyan);">--</div><div class="kpi-label">Monetary Relief</div></div></div></div>
-        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-amber"></div><div class="ps-3"><div class="kpi-value" id="kpi-timely" style="font-size:1.6rem; color: var(--accent-amber);">--</div><div class="kpi-label">Timely Response</div></div></div></div>
-        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-red"></div><div class="ps-3"><div class="kpi-value" id="kpi-progress" style="font-size:1.6rem; color: var(--accent-red);">--</div><div class="kpi-label">In Progress</div></div></div></div>
-        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-purple"></div><div class="ps-3"><div class="kpi-value" id="kpi-health" style="font-size:1.6rem; color: var(--accent-purple);">--</div><div class="kpi-label">Health Grade</div></div></div></div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-indigo"></div><div class="ps-3">
+                <div class="kpi-value" id="kpi-total" style="font-size:1.5rem; color: var(--accent-indigo-light);">--</div>
+                <div class="kpi-label">Total Complaints</div>
+                <div id="kpi-total-ctx" style="font-size:0.7rem; color: var(--text-muted); margin-top:2px;"></div>
+            </div></div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-green"></div><div class="ps-3">
+                <div class="kpi-value" id="kpi-resolution" style="font-size:1.5rem; color: var(--accent-green);">--</div>
+                <div class="kpi-label">Resolution Rate</div>
+                <div style="font-size:0.65rem; color: var(--text-muted); margin-top:2px;">% of complaints closed</div>
+            </div></div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-cyan"></div><div class="ps-3">
+                <div class="kpi-value" id="kpi-monetary" style="font-size:1.5rem; color: var(--accent-cyan);">--</div>
+                <div class="kpi-label">Monetary Relief</div>
+                <div style="font-size:0.65rem; color: var(--text-muted); margin-top:2px;">% resulting in $ relief</div>
+            </div></div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-amber"></div><div class="ps-3">
+                <div class="kpi-value" id="kpi-timely" style="font-size:1.5rem; color: var(--accent-amber);">--</div>
+                <div class="kpi-label">Timely Response</div>
+                <div style="font-size:0.65rem; color: var(--text-muted); margin-top:2px;">% responded within SLA</div>
+            </div></div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-red"></div><div class="ps-3">
+                <div class="kpi-value" id="kpi-progress" style="font-size:1.5rem; color: var(--accent-red);">--</div>
+                <div class="kpi-label">In Progress</div>
+                <div style="font-size:0.65rem; color: var(--text-muted); margin-top:2px;">Open / unresolved</div>
+            </div></div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card"><div class="accent-bar accent-purple"></div><div class="ps-3">
+                <div class="kpi-value" id="kpi-health" style="font-size:1.5rem; color: var(--accent-purple);">--</div>
+                <div class="kpi-label">Health Grade
+                    <span style="cursor:pointer; color:var(--accent-indigo-light);" onclick="document.getElementById('health-explainer').style.display=document.getElementById('health-explainer').style.display==='none'?'block':'none'">&#x2753;</span>
+                </div>
+                <div id="health-explainer" style="display:none; font-size:0.65rem; color:var(--text-secondary); margin-top:4px; background:var(--bg-input); padding:6px 8px; border-radius:8px;">
+                    <strong>Health Grade Formula:</strong><br>
+                    Resolution Rate (30%) + Monetary Relief (20%) + Timely Response (15%) + Trend Direction (20%) + Complaint Severity (15%)<br>
+                    A=80+ B=65+ C=50+ D=35+ F=&lt;35
+                </div>
+            </div></div>
+        </div>
     </div>
 
-    <!-- Monthly Trend (ACTUAL VOLUMES) + Response Breakdown -->
+    <!-- Monthly Trend with forecast + comparison -->
     <div class="row g-3 mb-4">
         <div class="col-md-8">
-            <div class="chart-container" style="height: 380px;">
-                <h5><i class="fas fa-chart-area me-2"></i>Monthly Complaint Trend (Actual CFPB Volumes)</h5>
-                <div style="position: relative; height: 320px;"><canvas id="trendChart"></canvas></div>
+            <div class="chart-container" style="height: 400px;">
+                <h5><i class="fas fa-chart-area me-2"></i>Monthly Complaint Trend (Actual CFPB Volumes)
+                    <span style="font-size:0.7rem; color:var(--text-muted); font-weight:400;"> | Dashed = forecast for partial month</span>
+                </h5>
+                <div style="position: relative; height: 340px;"><canvas id="trendChart"></canvas></div>
             </div>
         </div>
         <div class="col-md-4">
-            <div class="chart-container" style="height: 380px;">
-                <h5><i class="fas fa-chart-pie me-2"></i>Response Breakdown</h5>
-                <div style="position: relative; height: 320px;"><canvas id="responseChart"></canvas></div>
+            <div class="chart-container" style="height: 400px;">
+                <h5><i class="fas fa-chart-pie me-2"></i>Response Distribution</h5>
+                <div style="position: relative; height: 340px;"><canvas id="responseChart"></canvas></div>
             </div>
         </div>
     </div>
@@ -47,84 +98,60 @@
     <!-- Expandable Sections -->
     <div class="accordion" id="dashAccordion">
 
-        <!-- Section: Products & Issues -->
+        <!-- Products & Issues -->
         <div class="card-cw mb-3">
-            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#sec-products">
-                <h5 style="font-weight: 700; margin: 0;"><i class="fas fa-boxes-stacked me-2"></i>Products & Issues</h5>
-                <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
+            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-products" onclick="this.querySelector('.fa-chevron-down')?.classList.toggle('fa-chevron-up')">
+                <h5 style="font-weight:700; margin:0;"><i class="fas fa-boxes-stacked me-2"></i>Products & Issues</h5>
+                <i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
             </div>
-            <div class="collapse" id="sec-products">
-                <div class="p-3 pt-0">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <div class="chart-container" style="height: 350px;">
-                                <h6>Product Categories</h6>
-                                <div style="position: relative; height: 290px;"><canvas id="productChart"></canvas></div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="chart-container" style="height: 350px;">
-                                <h6>Top Issues</h6>
-                                <div style="position: relative; height: 290px;"><canvas id="issueChart"></canvas></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <div class="collapse" id="sec-products" data-loaded="false">
+                <div class="p-3 pt-0"><div class="row g-3">
+                    <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>Product Categories</h6><div style="position:relative;height:290px;"><canvas id="productChart"></canvas></div></div></div>
+                    <div class="col-md-6"><div class="chart-container" style="height:350px;"><h6>Top Issues</h6><div style="position:relative;height:290px;"><canvas id="issueChart"></canvas></div></div></div>
+                </div></div>
             </div>
         </div>
 
-        <!-- Section: Geographic -->
+        <!-- Text Analytics -->
         <div class="card-cw mb-3">
-            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#sec-geo">
-                <h5 style="font-weight: 700; margin: 0;"><i class="fas fa-map-marked-alt me-2"></i>Geographic Analysis</h5>
-                <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
+            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-text" onclick="this.querySelector('.fa-chevron-down')?.classList.toggle('fa-chevron-up')">
+                <h5 style="font-weight:700; margin:0;"><i class="fas fa-comment-dots me-2"></i>Narrative Analytics, Sentiment & Word Trends</h5>
+                <i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
             </div>
-            <div class="collapse" id="sec-geo">
-                <div class="p-3 pt-0">
-                    <div class="row g-3">
-                        <div class="col-md-7">
-                            <div class="chart-container" style="height: 350px;">
-                                <h6>Top States</h6>
-                                <div style="position: relative; height: 290px;"><canvas id="stateChart"></canvas></div>
-                            </div>
-                        </div>
-                        <div class="col-md-5">
-                            <div class="chart-container" style="height: 350px;">
-                                <h6>Submission Channels</h6>
-                                <div style="position: relative; height: 290px;"><canvas id="channelChart"></canvas></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Section: Text Analytics & Sentiment -->
-        <div class="card-cw mb-3">
-            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#sec-text">
-                <h5 style="font-weight: 700; margin: 0;"><i class="fas fa-comment-dots me-2"></i>Narrative Analytics & Sentiment</h5>
-                <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
-            </div>
-            <div class="collapse" id="sec-text">
+            <div class="collapse" id="sec-text" data-loaded="false">
                 <div class="p-3 pt-0">
                     <div class="row g-3 mb-3">
-                        <!-- Sentiment KPIs -->
-                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-score" style="font-size:1.8rem;">--</div><div class="kpi-label">Sentiment Score</div></div></div>
-                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-negative" style="font-size:1.4rem; color: var(--accent-red);">--</div><div class="kpi-label">Negative Mentions</div></div></div>
-                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-positive" style="font-size:1.4rem; color: var(--accent-green);">--</div><div class="kpi-label">Positive Mentions</div></div></div>
-                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-narratives" style="font-size:1.4rem; color: var(--accent-cyan);">--</div><div class="kpi-label">Total Narratives</div></div></div>
+                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-score" style="font-size:1.6rem;">--</div><div class="kpi-label">Sentiment Score</div></div></div>
+                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-negative" style="font-size:1.3rem; color:var(--accent-red);">--</div><div class="kpi-label">Negative Mentions</div></div></div>
+                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-positive" style="font-size:1.3rem; color:var(--accent-green);">--</div><div class="kpi-label">Positive Mentions</div></div></div>
+                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-narratives" style="font-size:1.3rem; color:var(--accent-cyan);">--</div><div class="kpi-label">Total Narratives</div></div></div>
                     </div>
-                    <div class="row g-3">
+                    <div class="row g-3 mb-3">
                         <div class="col-md-6">
-                            <div class="chart-container" style="height: 350px;">
-                                <h6>Top Words in Complaints</h6>
-                                <div style="position: relative; height: 290px;"><canvas id="wordsChart"></canvas></div>
+                            <div class="chart-container" style="height:350px;">
+                                <h6>Top Words in Complaints (Word Cloud)</h6>
+                                <div style="position:relative;height:290px;"><canvas id="wordsChart"></canvas></div>
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <div class="chart-container" style="height: 350px;">
+                            <div class="chart-container" style="height:350px;">
                                 <h6>Complaint Themes</h6>
-                                <div style="position: relative; height: 290px;"><canvas id="themesChart"></canvas></div>
+                                <div style="position:relative;height:290px;"><canvas id="themesChart"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Negative / Positive word lists -->
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="card-cw p-3">
+                                <h6 style="font-weight:700; color:var(--accent-red);"><i class="fas fa-arrow-down me-1"></i>Top Negative Keywords</h6>
+                                <div id="neg-words" style="font-size:0.85rem; color:var(--text-secondary);"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card-cw p-3">
+                                <h6 style="font-weight:700; color:var(--accent-green);"><i class="fas fa-arrow-up me-1"></i>Top Positive Keywords</h6>
+                                <div id="pos-words" style="font-size:0.85rem; color:var(--text-secondary);"></div>
                             </div>
                         </div>
                     </div>
@@ -132,14 +159,40 @@
             </div>
         </div>
 
-        <!-- Section: Bank Comparison -->
+        <!-- Geographic -->
         <div class="card-cw mb-3">
-            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#sec-banks">
-                <h5 style="font-weight: 700; margin: 0;"><i class="fas fa-university me-2"></i>Bank Comparison</h5>
-                <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
+            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-geo" onclick="this.querySelector('.fa-chevron-down')?.classList.toggle('fa-chevron-up')">
+                <h5 style="font-weight:700; margin:0;"><i class="fas fa-map-marked-alt me-2"></i>Geographic & Channel Analysis</h5>
+                <i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
             </div>
-            <div class="collapse" id="sec-banks">
+            <div class="collapse" id="sec-geo" data-loaded="false">
+                <div class="p-3 pt-0"><div class="row g-3">
+                    <div class="col-md-7"><div class="chart-container" style="height:350px;"><h6>Top States</h6><div style="position:relative;height:290px;"><canvas id="stateChart"></canvas></div></div></div>
+                    <div class="col-md-5"><div class="chart-container" style="height:350px;"><h6>Submission Channels</h6><div style="position:relative;height:290px;"><canvas id="channelChart"></canvas></div></div></div>
+                </div></div>
+            </div>
+        </div>
+
+        <!-- Bank Comparison -->
+        <div class="card-cw mb-3">
+            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sec-banks" onclick="this.querySelector('.fa-chevron-down')?.classList.toggle('fa-chevron-up')">
+                <h5 style="font-weight:700; margin:0;"><i class="fas fa-university me-2"></i>Bank Performance Comparison
+                    <span style="cursor:pointer; color:var(--accent-indigo-light); font-size:0.8rem;" onclick="event.stopPropagation(); document.getElementById('grade-help').style.display=document.getElementById('grade-help').style.display==='none'?'block':'none'">&#x2753; How are grades calculated?</span>
+                </h5>
+                <i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
+            </div>
+            <div class="collapse" id="sec-banks" data-loaded="false">
                 <div class="p-3 pt-0">
+                    <div id="grade-help" class="alert-cw alert-cw-info mb-3" style="display:none; font-size:0.8rem;">
+                        <strong>Health Grade Methodology:</strong><br>
+                        Each bank receives a composite score (0-100) based on:<br>
+                        <strong>Resolution Rate (30%)</strong> - % of complaints fully closed (not in-progress)<br>
+                        <strong>Monetary Relief (20%)</strong> - % of complaints resulting in financial compensation, scaled so 20% relief = 100 score<br>
+                        <strong>Timely Response (15%)</strong> - % of complaints answered within regulatory timeframe<br>
+                        <strong>Trend Direction (20%)</strong> - Are monthly complaints increasing (bad) or decreasing (good)?<br>
+                        <strong>Complaint Severity (15%)</strong> - Inverse of narrative rate (more narratives = more severe complaints)<br>
+                        <strong>Grades:</strong> A = 80+ | B = 65-79 | C = 50-64 | D = 35-49 | F = below 35
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-cw"><thead><tr><th>#</th><th>Institution</th><th>Complaints</th><th>Resolution</th><th>Monetary</th><th>Timely</th><th>Health</th><th>Grade</th></tr></thead>
                         <tbody id="bankTableBody"></tbody></table>
@@ -148,23 +201,31 @@
             </div>
         </div>
 
-    </div><!-- end accordion -->
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16','#64748b','#d946ef'];
+const RC = {'Closed with explanation':'#6366f1','Closed with monetary relief':'#22c55e','Closed with non-monetary relief':'#f59e0b','In progress':'#ef4444'};
 let charts = {};
 function C() { return document.getElementById('companyFilter').value; }
-function qs(e={}) { const p={}; const c=C(); if(c) p.company=c; Object.assign(p,e); return '?'+new URLSearchParams(p); }
+function P() { return document.getElementById('periodFilter').value; }
+function CMP() { return document.getElementById('compareFilter').value; }
+function qs(e={}) { const p={}; const c=C(); if(c) p.company=c; const m=P(); if(m) p.months=m; Object.assign(p,e); return '?'+new URLSearchParams(p); }
 function destroyChart(n) { if(charts[n]){charts[n].destroy(); delete charts[n];} }
 function fmt(n) { return n!=null ? Number(n).toLocaleString() : '--'; }
 
 async function loadCompanies() {
     const r = await fetch('/api/companies'); const d = await r.json();
     const s = document.getElementById('companyFilter');
-    d.forEach(c => { const o=document.createElement('option'); o.value=c.company; o.textContent=`${c.company} (${c.count.toLocaleString()})`; s.appendChild(o); });
+    const c = document.getElementById('compareFilter');
+    d.forEach(x => {
+        const o1=document.createElement('option'); o1.value=x.company; o1.textContent=`${x.company} (${x.count.toLocaleString()})`;
+        s.appendChild(o1);
+        const o2=o1.cloneNode(true); c.appendChild(o2);
+    });
 }
 
 async function loadKPIs() {
@@ -176,105 +237,152 @@ async function loadKPIs() {
     document.getElementById('kpi-timely').textContent=k.timely_rate+'%';
     document.getElementById('kpi-progress').textContent=fmt(k.in_progress);
     document.getElementById('kpi-health').textContent=h.grade+' ('+h.score+')';
+    // Context
+    const ctx = C() ? `Filtered: ${C()}` : `Across ${k.total > 50000 ? '20+' : ''} tracked institutions`;
+    document.getElementById('kpi-total-ctx').textContent = ctx;
 }
 
 async function loadTrend() {
-    // Use actual CFPB monthly volumes (not sampled data)
-    const res = await fetch('/api/monthly-volume'+qs());
-    const data = await res.json();
+    const params = new URLSearchParams();
+    const c=C(); if(c) params.set('company',c);
+    const m=P(); if(m) params.set('months',m);
+    const cmp=CMP(); if(cmp) params.set('compare',cmp);
+
+    const res = await fetch('/api/monthly-volume?'+params);
+    const json = await res.json();
+    const data = json.data || [];
+    const compare = json.compare || [];
+
+    const datasets = [];
+    // Main line
+    const mainData = data.map(d => d.count);
+    const bgColors = data.map(d => d.partial ? 'rgba(99,102,241,0)' : 'rgba(99,102,241,0.1)');
+
+    datasets.push({
+        label: C() || 'All Companies',
+        data: mainData,
+        borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true,
+        tension: 0.4, pointRadius: 3, pointBackgroundColor: data.map(d => d.partial ? '#f59e0b' : '#818cf8'),
+        borderDash: [],
+        segment: { borderDash: ctx => data[ctx.p1DataIndex]?.partial ? [6,3] : [] },
+    });
+
+    // Forecast point
+    const lastPt = data[data.length-1];
+    if (lastPt && lastPt.forecast) {
+        datasets.push({
+            label: 'Forecast',
+            data: data.map((d,i) => i === data.length-1 ? lastPt.forecast : null),
+            borderColor: '#f59e0b', backgroundColor: '#f59e0b44',
+            pointRadius: 6, pointStyle: 'triangle', pointBackgroundColor: '#f59e0b',
+            showLine: false,
+        });
+    }
+
+    // Comparison line
+    if (compare.length > 0) {
+        const compLookup = {};
+        compare.forEach(d => { compLookup[d.month] = d.count; });
+        datasets.push({
+            label: CMP(),
+            data: data.map(d => compLookup[d.month] || null),
+            borderColor: '#a855f7', borderDash: [5,3], tension: 0.4, pointRadius: 2, fill: false,
+        });
+    }
+
     destroyChart('trend');
     charts.trend = new Chart(document.getElementById('trendChart').getContext('2d'), {
-        type: 'line', data: {
-            labels: data.map(d=>d.month),
-            datasets: [{ label: 'Complaints', data: data.map(d=>d.count),
-                borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)',
-                fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#818cf8' }]
-        }, options: { responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { x: { grid:{color:'rgba(99,102,241,0.05)'}, ticks:{color:'#8b8fa3',maxTicksLimit:12} },
-                      y: { grid:{color:'rgba(99,102,241,0.05)'}, ticks:{color:'#8b8fa3'}, beginAtZero:true } } }
+        type: 'line', data: { labels: data.map(d=>d.month), datasets },
+        options: { responsive:true, maintainAspectRatio:false,
+            plugins: { legend: { labels: { color:'#8b8fa3', font:{size:10} } } },
+            scales: { x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3',maxTicksLimit:12}},
+                      y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true} } }
     });
 }
 
 async function loadResponse() {
     const r = await fetch('/api/response-breakdown'+qs()); const d = await r.json();
-    const RC = {'Closed with explanation':'#6366f1','Closed with monetary relief':'#22c55e','Closed with non-monetary relief':'#f59e0b','In progress':'#ef4444'};
+    const total = d.reduce((s,x)=>s+x.count,0);
     destroyChart('response');
     charts.response = new Chart(document.getElementById('responseChart').getContext('2d'), {
-        type: 'doughnut', data: { labels: d.map(x=>x.response), datasets: [{ data: d.map(x=>x.count), backgroundColor: d.map(x=>(RC[x.response]||'#64748b')+'cc'), borderWidth:0 }] },
-        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{color:'#8b8fa3',font:{size:10},padding:8}}} }
+        type: 'doughnut', data: {
+            labels: d.map(x => `${x.response} (${(x.count/total*100).toFixed(1)}%)`),
+            datasets: [{ data: d.map(x=>x.count), backgroundColor: d.map(x=>(RC[x.response]||'#64748b')+'cc'), borderWidth:0 }]
+        },
+        options: { responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{position:'right',labels:{color:'#8b8fa3',font:{size:9},padding:6}},
+                tooltip:{ callbacks:{ label: ctx => `${ctx.parsed.toLocaleString()} (${(ctx.parsed/total*100).toFixed(1)}%)` } } } }
     });
 }
 
+// ── Expandable section loaders (lazy load on open) ──
 async function loadProducts() {
-    const r = await fetch('/api/product-breakdown'+qs()); const d = await r.json();
+    const [pr, ir] = await Promise.all([fetch('/api/product-breakdown'+qs()), fetch('/api/issue-breakdown'+qs())]);
+    const products=await pr.json(), issues=await ir.json();
+    const ptotal = products.reduce((s,x)=>s+x.count,0);
     destroyChart('product');
     charts.product = new Chart(document.getElementById('productChart').getContext('2d'), {
-        type: 'bar', data: { labels: d.map(x=>x.product), datasets: [{ data: d.map(x=>x.count), backgroundColor: COLORS.map(c=>c+'99'), borderRadius:6 }] },
-        options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:10}}}} }
-    });
-}
-
-async function loadIssues() {
-    const r = await fetch('/api/issue-breakdown'+qs()); const d = await r.json();
-    destroyChart('issue');
-    charts.issue = new Chart(document.getElementById('issueChart').getContext('2d'), {
-        type: 'bar', data: { labels: d.map(x=>x.issue.length>40?x.issue.substring(0,40)+'...':x.issue), datasets: [{ data: d.map(x=>x.count), backgroundColor: COLORS.map(c=>c+'99'), borderRadius:6 }] },
+        type: 'bar', data: { labels: products.map(x=>`${x.product} (${(x.count/ptotal*100).toFixed(0)}%)`), datasets: [{ data: products.map(x=>x.count), backgroundColor: COLORS.map(c=>c+'99'), borderRadius:6 }] },
         options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}} }
     });
-}
-
-async function loadStates() {
-    const r = await fetch('/api/state-breakdown'+qs()); const d = await r.json();
-    destroyChart('state');
-    charts.state = new Chart(document.getElementById('stateChart').getContext('2d'), {
-        type: 'bar', data: { labels: d.slice(0,15).map(x=>x.state), datasets: [{ data: d.slice(0,15).map(x=>x.count), backgroundColor:'#6366f199', borderColor:'#6366f1', borderWidth:1, borderRadius:6 }] },
-        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8'}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}} }
-    });
-}
-
-async function loadChannels() {
-    const r = await fetch('/api/submission-channels'+qs()); const d = await r.json();
-    destroyChart('channel');
-    charts.channel = new Chart(document.getElementById('channelChart').getContext('2d'), {
-        type: 'doughnut', data: { labels: d.map(x=>x.channel), datasets: [{ data: d.map(x=>x.count), backgroundColor: COLORS.slice(0,d.length).map(c=>c+'cc'), borderWidth:0 }] },
-        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3',font:{size:11},padding:10}}} }
+    destroyChart('issue');
+    charts.issue = new Chart(document.getElementById('issueChart').getContext('2d'), {
+        type: 'bar', data: { labels: issues.map(x=>x.issue.length>40?x.issue.substring(0,40)+'...':x.issue), datasets: [{ data: issues.map(x=>x.count), backgroundColor: COLORS.map(c=>c+'99'), borderRadius:6 }] },
+        options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}} }
     });
 }
 
 async function loadTextAnalytics() {
     try {
-        const [wr, sr, tr, nr] = await Promise.all([
-            fetch('/api/text/top-words'+qs()), fetch('/api/text/sentiment'+qs()),
-            fetch('/api/text/themes'+qs()), fetch('/api/text/narrative-stats'+qs())
-        ]);
-        const words = await wr.json(), sent = await sr.json(), themes = await tr.json(), nstats = await nr.json();
+        const [wr,sr,tr] = await Promise.all([fetch('/api/text/top-words'+qs()),fetch('/api/text/sentiment'+qs()),fetch('/api/text/themes'+qs())]);
+        const words=await wr.json(), sent=await sr.json(), themes=await tr.json();
+        const score=sent.sentiment_score||0;
+        document.getElementById('sent-score').textContent = score>0?'+'+score.toFixed(2):score.toFixed(2);
+        document.getElementById('sent-score').style.color = score>0?'var(--accent-green)':'var(--accent-red)';
+        document.getElementById('sent-negative').textContent=fmt(sent.negative_count);
+        document.getElementById('sent-positive').textContent=fmt(sent.positive_count);
 
-        // Sentiment KPIs
-        const score = sent.sentiment_score || 0;
-        document.getElementById('sent-score').textContent = score > 0 ? '+'+score.toFixed(2) : score.toFixed(2);
-        document.getElementById('sent-score').style.color = score > 0 ? 'var(--accent-green)' : 'var(--accent-red)';
-        document.getElementById('sent-negative').textContent = fmt(sent.negative_count);
-        document.getElementById('sent-positive').textContent = fmt(sent.positive_count);
-        document.getElementById('sent-narratives').textContent = fmt(nstats.total_with_narrative);
+        const nRes = await fetch('/api/text/narrative-stats'+qs());
+        const nstats = await nRes.json();
+        document.getElementById('sent-narratives').textContent=fmt(nstats.total_with_narrative);
 
-        // Top words chart
-        const topW = words.slice(0, 20);
+        // Negative/Positive word lists
+        document.getElementById('neg-words').innerHTML = (sent.top_negative_words||[]).map(w =>
+            `<span style="display:inline-block;background:rgba(239,68,68,0.15);padding:0.2rem 0.5rem;border-radius:6px;margin:2px;font-weight:600;color:var(--accent-red);">${w.word} (${fmt(w.count)})</span>`
+        ).join('');
+        document.getElementById('pos-words').innerHTML = (sent.top_positive_words||[]).map(w =>
+            `<span style="display:inline-block;background:rgba(34,197,94,0.15);padding:0.2rem 0.5rem;border-radius:6px;margin:2px;font-weight:600;color:var(--accent-green);">${w.word} (${fmt(w.count)})</span>`
+        ).join('');
+
+        const topW=words.slice(0,20);
         destroyChart('words');
         charts.words = new Chart(document.getElementById('wordsChart').getContext('2d'), {
-            type: 'bar', data: { labels: topW.map(w=>w.word), datasets: [{ data: topW.map(w=>w.count), backgroundColor: '#6366f199', borderRadius:4 }] },
-            options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}} }
+            type:'bar', data:{labels:topW.map(w=>w.word),datasets:[{data:topW.map(w=>w.count),backgroundColor:'#6366f199',borderRadius:4}]},
+            options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}
         });
-
-        // Themes chart
         destroyChart('themes');
+        const totalThemes = themes.reduce((s,t)=>s+t.count,0);
         charts.themes = new Chart(document.getElementById('themesChart').getContext('2d'), {
-            type: 'bar', data: { labels: themes.map(t=>t.theme), datasets: [{ data: themes.map(t=>t.count), backgroundColor: COLORS.slice(0,themes.length).map(c=>c+'99'), borderRadius:6 }] },
-            options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9},maxRotation:45}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}} }
+            type:'bar', data:{labels:themes.map(t=>`${t.theme} (${t.percentage}%)`),datasets:[{data:themes.map(t=>t.count),backgroundColor:COLORS.slice(0,themes.length).map(c=>c+'99'),borderRadius:6}]},
+            options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8},maxRotation:45}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}
         });
-    } catch(e) {
-        console.log('Text analytics not available:', e);
-    }
+    } catch(e) { console.log('Text analytics error:', e); }
+}
+
+async function loadGeo() {
+    const [sr,cr] = await Promise.all([fetch('/api/state-breakdown'+qs()),fetch('/api/submission-channels'+qs())]);
+    const states=await sr.json(), channels=await cr.json();
+    destroyChart('state');
+    charts.state = new Chart(document.getElementById('stateChart').getContext('2d'), {
+        type:'bar', data:{labels:states.slice(0,15).map(x=>x.state),datasets:[{data:states.slice(0,15).map(x=>x.count),backgroundColor:'#6366f199',borderColor:'#6366f1',borderWidth:1,borderRadius:6}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8'}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}
+    });
+    const chTotal = channels.reduce((s,x)=>s+x.count,0);
+    destroyChart('channel');
+    charts.channel = new Chart(document.getElementById('channelChart').getContext('2d'), {
+        type:'doughnut', data:{labels:channels.map(x=>`${x.channel} (${(x.count/chTotal*100).toFixed(1)}%)`),datasets:[{data:channels.map(x=>x.count),backgroundColor:COLORS.slice(0,channels.length).map(c=>c+'cc'),borderWidth:0}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3',font:{size:10},padding:8}}}}
+    });
 }
 
 async function loadBanks() {
@@ -289,21 +397,38 @@ async function loadBanks() {
     </tr>`).join('');
 }
 
+// Lazy-load expandable sections
+document.querySelectorAll('.collapse').forEach(el => {
+    el.addEventListener('show.bs.collapse', function() {
+        if (this.dataset.loaded === 'false') {
+            this.dataset.loaded = 'true';
+            const id = this.id;
+            if (id === 'sec-products') loadProducts();
+            else if (id === 'sec-text') loadTextAnalytics();
+            else if (id === 'sec-geo') loadGeo();
+            else if (id === 'sec-banks') loadBanks();
+        }
+    });
+});
+
 function loadAll() {
     const eb = document.getElementById('exportBtn');
     if(eb) { const c=C(); eb.href='/api/export/monthly-data'+(c?'?company='+encodeURIComponent(c):''); }
     loadKPIs(); loadTrend(); loadResponse();
-    loadProducts(); loadIssues(); loadStates(); loadChannels();
-    loadTextAnalytics(); loadBanks();
-}
-
-// Load expandable section charts when opened
-document.querySelectorAll('.collapse').forEach(el => {
-    el.addEventListener('shown.bs.collapse', () => {
-        // Trigger chart resize
-        Object.values(charts).forEach(c => c.resize && c.resize());
+    // Reset lazy-load flags
+    document.querySelectorAll('.collapse').forEach(el => {
+        if (el.classList.contains('show')) {
+            el.dataset.loaded = 'true';
+            const id = el.id;
+            if (id === 'sec-products') loadProducts();
+            else if (id === 'sec-text') loadTextAnalytics();
+            else if (id === 'sec-geo') loadGeo();
+            else if (id === 'sec-banks') loadBanks();
+        } else {
+            el.dataset.loaded = 'false';
+        }
     });
-});
+}
 
 loadCompanies().then(() => loadAll());
 </script>

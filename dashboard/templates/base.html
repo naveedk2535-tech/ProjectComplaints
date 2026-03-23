@@ -34,11 +34,6 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'geographic' %}active{% endif %}" href="{{ url_for('geographic') }}">
-                            <i class="fas fa-map-marked-alt me-1"></i> Geographic
-                        </a>
-                    </li>
-                    <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'bank_profiles' %}active{% endif %}" href="{{ url_for('bank_profiles') }}">
                             <i class="fas fa-university me-1"></i> Bank Profiles
                         </a>
