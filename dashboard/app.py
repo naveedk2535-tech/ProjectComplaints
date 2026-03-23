@@ -829,6 +829,30 @@ def create_app():
         for item in result['channels']:
             item['channel'] = item['name']
 
+        # Add peer/industry comparison if a company is selected
+        if company:
+            def _get_peer_pct(field):
+                """Get % distribution across all OTHER companies for comparison."""
+                col = getattr(Complaint, field)
+                total_q = Complaint.query.filter(Complaint.company != company).count()
+                if not total_q:
+                    return {}
+                q = db.session.query(col, func.count().label('c')).filter(
+                    Complaint.company != company, col.isnot(None), col != ''
+                ).group_by(col).all()
+                return {r[0]: round(r[1] / total_q * 100, 1) for r in q}
+
+            peer_products = _get_peer_pct('product')
+            peer_issues = _get_peer_pct('issue')
+            peer_states = _get_peer_pct('state')
+
+            for item in result['products']:
+                item['peer_pct'] = peer_products.get(item['name'], 0)
+            for item in result['issues']:
+                item['peer_pct'] = peer_issues.get(item['name'], 0)
+            for item in result['states']:
+                item['peer_pct'] = peer_states.get(item['name'], 0)
+
         _top5_cache['data'][cache_key] = result
         _top5_cache['time'][cache_key] = _time.time()
         return jsonify(result)

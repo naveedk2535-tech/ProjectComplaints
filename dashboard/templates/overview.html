@@ -38,23 +38,23 @@
         <div class="row g-2 mb-3">
             <div class="col"><div class="kpi-card"><div class="accent-bar accent-indigo"></div><div class="ps-3">
                 <div class="kpi-value" id="kpi-total" style="font-size:1.4rem;color:var(--accent-indigo-light);">--</div>
-                <div class="kpi-label">Complaints</div><div id="kpi-total-var" class="kpi-var"></div>
+                <div class="kpi-label">Complaints <span class="help-icon" title="Total CFPB complaints filed against this institution across all products and channels. Based on sampled data (100 per month per company from CFPB API).">?</span></div><div id="kpi-total-var" class="kpi-var"></div>
             </div></div></div>
             <div class="col"><div class="kpi-card"><div class="accent-bar accent-green"></div><div class="ps-3">
                 <div class="kpi-value" id="kpi-res" style="font-size:1.4rem;color:var(--accent-green);">--</div>
-                <div class="kpi-label">Resolution <span class="help-icon" title="% of complaints closed (not in-progress)">?</span></div><div id="kpi-res-var" class="kpi-var"></div>
+                <div class="kpi-label">Resolution <span class="help-icon" title="Resolution Rate = (Closed with explanation + monetary relief + non-monetary relief) / Total complaints. Measures what % of complaints have been fully resolved vs still in-progress.">?</span></div><div id="kpi-res-var" class="kpi-var"></div>
             </div></div></div>
             <div class="col"><div class="kpi-card"><div class="accent-bar accent-cyan"></div><div class="ps-3">
                 <div class="kpi-value" id="kpi-mon" style="font-size:1.4rem;color:var(--accent-cyan);">--</div>
-                <div class="kpi-label">Monetary Relief <span class="help-icon" title="% resulting in financial compensation">?</span></div><div id="kpi-mon-var" class="kpi-var"></div>
+                <div class="kpi-label">Monetary Relief <span class="help-icon" title="Monetary Relief Rate = Complaints closed with financial compensation / Total complaints. Higher means the bank is paying out more to resolve consumer issues.">?</span></div><div id="kpi-mon-var" class="kpi-var"></div>
             </div></div></div>
             <div class="col"><div class="kpi-card"><div class="accent-bar accent-amber"></div><div class="ps-3">
                 <div class="kpi-value" id="kpi-tim" style="font-size:1.4rem;color:var(--accent-amber);">--</div>
-                <div class="kpi-label">Timely <span class="help-icon" title="% responded within regulatory SLA">?</span></div><div id="kpi-tim-var" class="kpi-var"></div>
+                <div class="kpi-label">Timely <span class="help-icon" title="Timely Response Rate = % of complaints where the company responded within the 15-day regulatory deadline set by CFPB. 100% = perfect compliance.">?</span></div><div id="kpi-tim-var" class="kpi-var"></div>
             </div></div></div>
             <div class="col"><div class="kpi-card"><div class="accent-bar accent-purple"></div><div class="ps-3">
                 <div class="kpi-value" id="kpi-health" style="font-size:1.4rem;color:var(--accent-purple);">--</div>
-                <div class="kpi-label">Grade <span class="help-icon" onclick="event.stopPropagation();toggleEl('hh')" title="Click for methodology">?</span></div>
+                <div class="kpi-label">Grade <span class="help-icon" onclick="event.stopPropagation();toggleEl('hh')" title="Composite health grade. Click ? for full formula.">?</span></div>
             </div></div></div>
         </div>
         <div id="hh" class="alert-cw alert-cw-info mb-3" style="display:none;font-size:0.72rem;">
@@ -315,8 +315,21 @@ async function loadResponse(){
 const SL={
     top5:async()=>{
         const r=await fetch('/api/top5-comparison'+qs());const d=await r.json();
-        const secs=[{t:'Products',d:d.products,k:'product'},{t:'Issues',d:d.issues,k:'issue'},{t:'Sub-Products',d:d.sub_products,k:'name'},{t:'Sub-Issues',d:d.sub_issues,k:'name'},{t:'States',d:d.states,k:'state'},{t:'Channels',d:d.channels,k:'channel'},{t:'Tags',d:d.tags,k:'name'},{t:'Public Responses',d:d.public_responses,k:'name'},{t:'Resolution',d:d.responses,k:'response'}];
-        document.getElementById('top5-box').innerHTML='<div class="t5g">'+secs.map(s=>{const items=(s.d||[]).slice(0,5);if(!items.length)return '';const total=items.reduce((a,b)=>a+(b.count||0),0);return `<div class="t5c"><h6>${s.t}</h6><div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-muted);padding:0 0 3px;border-bottom:1px solid var(--border-color);"><span>Item</span><span>Total</span><span>MoM</span></div>${items.map((it,i)=>{const nm=it[s.k]||it.name||'?';const pct=total?(it.count/total*100).toFixed(0):'0';const mom=it.mom_change;const momHtml=mom!=null&&mom!==0?`<span style="color:${mom>0?'var(--accent-red)':'var(--accent-green)'};font-weight:700;font-size:0.7rem;">${mom>0?'+':''}${mom}%</span>`:(it.cur_month!=null?`<span style="color:var(--text-muted);font-size:0.7rem;">0%</span>`:'');const monthHtml=it.cur_month!=null?`<span style="color:var(--text-muted);font-size:0.65rem;">${it.cur_month}→${it.prev_month||0}</span>`:'';return `<div class="t5i"><span style="color:var(--text-secondary);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${i+1}. ${nm.substring(0,30)}</span><span style="font-weight:700;font-size:0.8rem;">${fmt(it.count)} <span style="color:var(--text-muted);font-size:0.65rem;">(${pct}%)</span></span>${momHtml}</div>`;}).join('')}</div>`;}).join('')+'</div>';
+        const hasCo=!!C();
+        const secs=[{t:'Products',d:d.products,k:'product'},{t:'Issues',d:d.issues,k:'issue'},{t:'Sub-Products',d:d.sub_products,k:'name'},{t:'Sub-Issues',d:d.sub_issues,k:'name'},{t:'States',d:d.states,k:'state'},{t:'Channels',d:d.channels,k:'channel'},{t:'Tags',d:d.tags,k:'name'},{t:'Resolution',d:d.responses,k:'response'}];
+        document.getElementById('top5-box').innerHTML='<div class="t5g">'+secs.map(s=>{
+            const items=(s.d||[]).slice(0,5);if(!items.length)return '';
+            const total=items.reduce((a,b)=>a+(b.count||0),0);
+            const header=`<div style="display:grid;grid-template-columns:1fr auto auto ${hasCo?'auto ':''};gap:4px;font-size:0.6rem;color:var(--text-muted);padding:0 0 3px;border-bottom:1px solid var(--border-color);"><span>Item</span><span>Share</span><span>MoM</span>${hasCo?'<span>vs Peers</span>':''}</div>`;
+            return `<div class="t5c"><h6>${s.t}</h6>${header}${items.map((it,i)=>{
+                const nm=it[s.k]||it.name||'?';
+                const pct=total?(it.count/total*100).toFixed(0):'0';
+                const mom=it.mom_change;
+                const momHtml=mom!=null&&mom!==0?`<span style="color:${mom>0?'var(--accent-red)':'var(--accent-green)'};font-weight:700;font-size:0.7rem;">${mom>0?'+':''}${mom}%</span>`:(it.cur_month!=null?'<span style="font-size:0.7rem;color:var(--text-muted);">0%</span>':'<span style="font-size:0.7rem;color:var(--text-muted);">-</span>');
+                const peerHtml=hasCo&&it.peer_pct!=null?`<span style="font-size:0.7rem;color:var(--text-muted);">${it.peer_pct}%</span>`:'';
+                return `<div style="display:grid;grid-template-columns:1fr auto auto ${hasCo?'auto ':''};gap:4px;padding:2px 0;font-size:0.78rem;border-bottom:1px solid rgba(99,102,241,0.05);align-items:center;"><span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${i+1}. ${nm.substring(0,28)}</span><span style="font-weight:700;">${pct}%</span>${momHtml}${peerHtml}</div>`;
+            }).join('')}</div>`;
+        }).join('')+'</div>';
     },
     client:async()=>{
         // Products & Issues

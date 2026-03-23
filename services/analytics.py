@@ -1,10 +1,25 @@
 from models.database import db, Complaint, BankProfile
 from sqlalchemy import func, extract, case, desc
 from datetime import datetime, timedelta
+import time as _time
+
+_kpi_cache = {}
 
 
 def get_kpis(company=None, date_from=None, date_to=None):
-    q = Complaint.query
+    cache_key = f'{company}_{date_from}_{date_to}'
+    if cache_key in _kpi_cache and _time.time() - _kpi_cache[cache_key][1] < 300:
+        return _kpi_cache[cache_key][0]
+
+    # Single query with CASE expressions instead of 6 separate counts
+    q = db.session.query(
+        func.count().label('total'),
+        func.sum(case((Complaint.company_response.like('Closed%'), 1), else_=0)).label('closed'),
+        func.sum(case((Complaint.company_response == 'Closed with monetary relief', 1), else_=0)).label('monetary'),
+        func.sum(case((Complaint.timely_response == True, 1), else_=0)).label('timely'),
+        func.sum(case((Complaint.company_response == 'In progress', 1), else_=0)).label('in_progress'),
+        func.sum(case((Complaint.narrative.isnot(None), 1), else_=0)).label('with_narrative'),
+    )
     if company:
         q = q.filter(Complaint.company == company)
     if date_from:
@@ -12,27 +27,28 @@ def get_kpis(company=None, date_from=None, date_to=None):
     if date_to:
         q = q.filter(Complaint.date_received <= date_to)
 
-    total = q.count()
+    r = q.first()
+    total = r.total or 0
     if total == 0:
         return {'total': 0, 'resolution_rate': 0, 'monetary_relief_rate': 0,
                 'timely_rate': 0, 'in_progress': 0, 'with_narrative': 0}
 
-    closed = q.filter(Complaint.company_response.like('Closed%')).count()
-    monetary = q.filter(Complaint.company_response == 'Closed with monetary relief').count()
-    timely = q.filter(Complaint.timely_response == True).count()
-    in_progress = q.filter(Complaint.company_response == 'In progress').count()
-    with_narrative = q.filter(Complaint.narrative.isnot(None), Complaint.narrative != '').count()
+    closed = r.closed or 0
+    monetary = r.monetary or 0
+    timely = r.timely or 0
 
-    return {
+    result = {
         'total': total,
-        'resolution_rate': round(closed / total * 100, 1) if total else 0,
-        'monetary_relief_rate': round(monetary / total * 100, 1) if total else 0,
-        'timely_rate': round(timely / total * 100, 1) if total else 0,
-        'in_progress': in_progress,
-        'with_narrative': with_narrative,
+        'resolution_rate': round(closed / total * 100, 1),
+        'monetary_relief_rate': round(monetary / total * 100, 1),
+        'timely_rate': round(timely / total * 100, 1),
+        'in_progress': r.in_progress or 0,
+        'with_narrative': r.with_narrative or 0,
         'closed': closed,
         'monetary': monetary,
     }
+    _kpi_cache[cache_key] = (result, _time.time())
+    return result
 
 
 def get_monthly_trend(company=None, product=None, months=24):
@@ -335,42 +351,44 @@ def get_issue_resolution_mix(company=None, limit=15):
 
 
 def get_mom_changes(company=None):
-    """Month-over-month changes for key metrics. Compare most recent full month vs previous."""
-    # Find the most recent full month (not current partial month)
+    """Month-over-month changes using actual CFPB monthly volumes + sampled issue data."""
+    from models.database import MonthlyVolume
     today = datetime.utcnow().date()
-    # End of last full month
     first_of_current = today.replace(day=1)
     last_month_end = first_of_current - timedelta(days=1)
     last_month_start = last_month_end.replace(day=1)
-    # Previous month
     prev_month_end = last_month_start - timedelta(days=1)
     prev_month_start = prev_month_end.replace(day=1)
 
+    cur_key = f"{last_month_start.year}-{last_month_start.month:02d}"
+    prev_key = f"{prev_month_start.year}-{prev_month_start.month:02d}"
+
+    # Use MonthlyVolume for actual CFPB volumes (not sampled)
+    cur_vol_q = db.session.query(func.sum(MonthlyVolume.total_complaints)).filter(MonthlyVolume.month == cur_key)
+    prev_vol_q = db.session.query(func.sum(MonthlyVolume.total_complaints)).filter(MonthlyVolume.month == prev_key)
+    if company:
+        cur_vol_q = cur_vol_q.filter(MonthlyVolume.company == company)
+        prev_vol_q = prev_vol_q.filter(MonthlyVolume.company == company)
+    current_total = cur_vol_q.scalar() or 0
+    prev_total = prev_vol_q.scalar() or 0
+
+    volume_change_pct = round((current_total - prev_total) / prev_total * 100, 1) if prev_total else 0
+
+    # Monetary relief from sampled data (MonthlyVolume doesn't have response breakdown)
     def _query_month(start, end):
-        q = Complaint.query.filter(
-            Complaint.date_received >= start,
-            Complaint.date_received <= end
-        )
+        q = Complaint.query.filter(Complaint.date_received >= start, Complaint.date_received <= end)
         if company:
             q = q.filter(Complaint.company == company)
         return q
 
-    current_q = _query_month(last_month_start, last_month_end)
-    prev_q = _query_month(prev_month_start, prev_month_end)
-
-    current_total = current_q.count()
-    prev_total = prev_q.count()
-
-    current_monetary = current_q.filter(
-        Complaint.company_response == 'Closed with monetary relief'
-    ).count()
-    prev_monetary = prev_q.filter(
-        Complaint.company_response == 'Closed with monetary relief'
-    ).count()
-
-    volume_change_pct = round((current_total - prev_total) / prev_total * 100, 1) if prev_total else 0
-    current_mr_rate = round(current_monetary / current_total * 100, 1) if current_total else 0
-    prev_mr_rate = round(prev_monetary / prev_total * 100, 1) if prev_total else 0
+    cur_sample = _query_month(last_month_start, last_month_end).count()
+    cur_monetary = _query_month(last_month_start, last_month_end).filter(
+        Complaint.company_response == 'Closed with monetary relief').count()
+    prev_sample = _query_month(prev_month_start, prev_month_end).count()
+    prev_monetary = _query_month(prev_month_start, prev_month_end).filter(
+        Complaint.company_response == 'Closed with monetary relief').count()
+    current_mr_rate = round(cur_monetary / cur_sample * 100, 1) if cur_sample else 0
+    prev_mr_rate = round(prev_monetary / prev_sample * 100, 1) if prev_sample else 0
     monetary_relief_change_pct = round(current_mr_rate - prev_mr_rate, 1)
 
     # Issue-level changes
