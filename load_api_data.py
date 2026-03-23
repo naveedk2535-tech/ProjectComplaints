@@ -13,7 +13,7 @@ from datetime import datetime, date, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dashboard.app import create_app
-from models.database import db, Complaint
+from models.database import db, Complaint, MonthlyVolume
 
 CFPB_API = "https://www.consumerfinance.gov/data-research/consumer-complaints/search/api/v1/"
 
@@ -124,6 +124,17 @@ def load_company(company):
                 timely_response=s.get('timely', 'Yes') == 'Yes',
                 consumer_disputed=s.get('consumer_disputed', 'N/A'),
             ))
+
+        # Store actual total for this month (from CFPB API, not our sample)
+        if total_in_month > 0:
+            month_key = f"{year}-{month:02d}"
+            mv = MonthlyVolume.query.filter_by(company=company, month=month_key).first()
+            if mv:
+                mv.total_complaints = total_in_month
+                mv.last_updated = datetime.utcnow()
+            else:
+                mv = MonthlyVolume(company=company, month=month_key, total_complaints=total_in_month)
+                db.session.add(mv)
 
         if batch:
             db.session.add_all(batch)

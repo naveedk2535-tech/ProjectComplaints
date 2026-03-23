@@ -598,6 +598,99 @@ def create_app():
             'last_login': user.last_login.isoformat() if user.last_login else None,
         })
 
+    # ── Admin Add/Delete Users ──────────────────────────────────
+    @app.route('/api/admin/user/add', methods=['POST'])
+    @admin_required
+    def admin_add_user():
+        data = request.json
+        if not data.get('email') or not data.get('name') or not data.get('password'):
+            return jsonify({'error': 'Name, email, and password required'}), 400
+        if User.query.filter_by(email=data['email'].lower()).first():
+            return jsonify({'error': 'Email already exists'}), 400
+        user = User(
+            email=data['email'].lower(),
+            name=data['name'],
+            role=data.get('role', 'user'),
+            subscription_status=data.get('subscription_status', 'trial'),
+            is_active=True,
+        )
+        user.set_password(data['password'])
+        if data.get('subscription_status') != 'active':
+            user.start_trial()
+            if data.get('trial_days'):
+                user.trial_end = date.today() + timedelta(days=int(data['trial_days']))
+        db.session.add(user)
+        db.session.commit()
+        return jsonify({'success': True, 'id': user.id})
+
+    @app.route('/api/admin/user/<int:user_id>/delete', methods=['POST'])
+    @admin_required
+    def admin_delete_user(user_id):
+        user = User.query.get_or_404(user_id)
+        if user.role == 'admin':
+            admin_count = User.query.filter_by(role='admin').count()
+            if admin_count <= 1:
+                return jsonify({'error': 'Cannot delete the last admin'}), 400
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({'success': True})
+
+    # ── Monthly Volume (actual CFPB totals) ─────────────────────
+    @app.route('/api/monthly-volume')
+    @login_required
+    def api_monthly_volume():
+        from models.database import MonthlyVolume
+        company = request.args.get('company')
+        q = db.session.query(
+            MonthlyVolume.month,
+            db.func.sum(MonthlyVolume.total_complaints).label('total')
+        )
+        if company:
+            q = q.filter(MonthlyVolume.company == company)
+        q = q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
+        return jsonify([{'month': r.month, 'count': r.total} for r in q.all()])
+
+    @app.route('/api/monthly-volume-by-company')
+    @login_required
+    def api_monthly_volume_by_company():
+        from models.database import MonthlyVolume
+        q = db.session.query(
+            MonthlyVolume.company,
+            MonthlyVolume.month,
+            MonthlyVolume.total_complaints
+        ).order_by(MonthlyVolume.month)
+        results = q.all()
+        return jsonify([{'company': r.company, 'month': r.month, 'count': r.total_complaints} for r in results])
+
+    # ── Text Analytics APIs ─────────────────────────────────────
+    @app.route('/api/text/top-words')
+    @login_required
+    def api_top_words():
+        from services.text_analytics import get_top_words
+        company = request.args.get('company')
+        return jsonify(get_top_words(company=company))
+
+    @app.route('/api/text/sentiment')
+    @login_required
+    def api_sentiment():
+        from services.text_analytics import get_sentiment_summary
+        company = request.args.get('company')
+        return jsonify(get_sentiment_summary(company=company))
+
+    @app.route('/api/text/themes')
+    @login_required
+    def api_themes():
+        from services.text_analytics import get_complaint_themes
+        company = request.args.get('company')
+        return jsonify(get_complaint_themes(company=company))
+
+    @app.route('/api/text/narrative-stats')
+    @login_required
+    def api_narrative_stats():
+        from services.text_analytics import get_narrative_stats
+        company = request.args.get('company')
+        return jsonify(get_narrative_stats(company=company))
+
     # ── Stripe (Placeholder) ────────────────────────────────────
     @app.route('/api/stripe/create-checkout-session', methods=['POST'])
     @login_required

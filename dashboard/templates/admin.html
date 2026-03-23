@@ -45,7 +45,10 @@
 
     <!-- User Management Table -->
     <div class="card-cw p-4">
-        <h5 style="font-weight: 700;" class="mb-3">User Management</h5>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 style="font-weight: 700; margin: 0;">User Management</h5>
+            <button class="btn btn-cw btn-sm" onclick="showAddUser()"><i class="fas fa-user-plus me-2"></i>Add User</button>
+        </div>
         <div class="table-responsive">
             <table class="table table-cw">
                 <thead>
@@ -69,9 +72,10 @@
                         <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else 'N/A' }}</td>
                         <td>{{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else 'Never' }}</td>
                         <td>
-                            <button class="btn btn-sm btn-cw" style="padding: 0.2rem 0.6rem; font-size: 0.75rem;" onclick="editUser({{ user.id }})">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-cw" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="editUser({{ user.id }})"><i class="fas fa-edit"></i></button>
+                                <button class="btn btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; color: var(--accent-red);" onclick="deleteUser({{ user.id }}, '{{ user.name }}')"><i class="fas fa-trash"></i></button>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -247,7 +251,58 @@ function decompressDB() {
     });
 }
 
-// Check if gz file exists (show decompress button)
+function showAddUser() {
+    const html = `
+        <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; align-items: center; justify-content: center;" id="addUserModal">
+            <div class="card-cw p-4" style="width: 450px;" onclick="event.stopPropagation()">
+                <h5 style="font-weight: 800;"><i class="fas fa-user-plus me-2"></i>Add New User</h5>
+                <div class="mb-3"><label class="form-label" style="font-size:0.85rem; color:var(--text-secondary);">Name</label><input type="text" id="add-name" class="form-control form-control-cw"></div>
+                <div class="mb-3"><label class="form-label" style="font-size:0.85rem; color:var(--text-secondary);">Email</label><input type="email" id="add-email" class="form-control form-control-cw"></div>
+                <div class="mb-3"><label class="form-label" style="font-size:0.85rem; color:var(--text-secondary);">Password</label><input type="password" id="add-password" class="form-control form-control-cw"></div>
+                <div class="row g-3 mb-3">
+                    <div class="col-6"><label class="form-label" style="font-size:0.85rem; color:var(--text-secondary);">Role</label><select id="add-role" class="form-select-cw" style="width:100%;"><option value="user">User</option><option value="admin">Admin</option></select></div>
+                    <div class="col-6"><label class="form-label" style="font-size:0.85rem; color:var(--text-secondary);">Subscription</label><select id="add-sub" class="form-select-cw" style="width:100%;"><option value="trial">Trial (30 days)</option><option value="active">Premium</option></select></div>
+                </div>
+                <div id="add-error" class="alert-cw" style="display:none;"></div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-cw" onclick="createUser()"><i class="fas fa-save me-2"></i>Create User</button>
+                    <button class="btn btn-cw-outline" onclick="document.getElementById('addUserModal').remove()">Cancel</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function createUser() {
+    const data = {
+        name: document.getElementById('add-name').value,
+        email: document.getElementById('add-email').value,
+        password: document.getElementById('add-password').value,
+        role: document.getElementById('add-role').value,
+        subscription_status: document.getElementById('add-sub').value,
+    };
+    const res = await fetch('/api/admin/user/add', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+    const result = await res.json();
+    if (result.error) {
+        document.getElementById('add-error').style.display = 'block';
+        document.getElementById('add-error').textContent = result.error;
+    } else {
+        location.reload();
+    }
+}
+
+async function deleteUser(userId, userName) {
+    if (!confirm(`Delete user "${userName}"? This cannot be undone.`)) return;
+    const res = await fetch(`/api/admin/user/${userId}/delete`, { method: 'POST', headers: {'Content-Type': 'application/json'} });
+    const result = await res.json();
+    if (result.error) {
+        showStatus(result.error, 'error');
+    } else {
+        location.reload();
+    }
+}
+
+// Check if gz file exists
 fetch('/api/admin/decompress-db', { method: 'POST', headers: {'Content-Type': 'application/json'} })
 .then(r => { if (r.status === 200) document.getElementById('decompressBtn').style.display = 'inline-block'; })
 .catch(() => {});

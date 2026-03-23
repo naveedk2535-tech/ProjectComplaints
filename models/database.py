@@ -83,6 +83,20 @@ class Complaint(db.Model):
     )
 
 
+class MonthlyVolume(db.Model):
+    """Stores actual CFPB monthly complaint totals (not sampled)."""
+    __tablename__ = 'monthly_volumes'
+    id = db.Column(db.Integer, primary_key=True)
+    company = db.Column(db.String(100), index=True)
+    month = db.Column(db.String(7), index=True)  # YYYY-MM
+    total_complaints = db.Column(db.Integer, default=0)
+    last_updated = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('company', 'month', name='uq_company_month'),
+    )
+
+
 class AICommentary(db.Model):
     __tablename__ = 'ai_commentary'
     id = db.Column(db.Integer, primary_key=True)

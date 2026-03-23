@@ -3,275 +3,308 @@
 
 {% block content %}
 <div class="container-fluid px-4 py-4">
-    <!-- Header with Company Filter -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 style="font-weight: 800;"><i class="fas fa-chart-line me-2"></i>Overview Dashboard</h2>
         <div class="d-flex gap-2 align-items-center">
             <select id="companyFilter" class="form-select-cw" style="width: 280px;" onchange="loadAll()">
                 <option value="">All Companies</option>
             </select>
             {% if current_user and current_user.is_premium %}
-            <a id="exportBtn" href="/api/export/monthly-data" class="btn btn-cw-outline btn-sm" title="Export data as TXT">
-                <i class="fas fa-download me-1"></i>Export
-            </a>
+            <a id="exportBtn" href="/api/export/monthly-data" class="btn btn-cw-outline btn-sm"><i class="fas fa-download me-1"></i>Export</a>
             {% else %}
-            <a href="{{ url_for('pricing') }}" class="btn btn-cw-outline btn-sm" title="Premium feature">
-                <i class="fas fa-lock me-1"></i>Export <span class="badge-premium ms-1">PRO</span>
-            </a>
+            <a href="{{ url_for('pricing') }}" class="btn btn-cw-outline btn-sm"><i class="fas fa-lock me-1"></i>Export <span class="badge-premium ms-1">PRO</span></a>
             {% endif %}
         </div>
     </div>
 
     <!-- KPI Cards -->
-    <div class="row g-3 mb-4" id="kpi-row">
-        <div class="col-md-2">
-            <div class="kpi-card"><div class="accent-bar accent-indigo"></div>
-                <div class="ps-3">
-                    <div class="kpi-value" id="kpi-total" style="color: var(--accent-indigo-light);">--</div>
-                    <div class="kpi-label">Total Complaints</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="kpi-card"><div class="accent-bar accent-green"></div>
-                <div class="ps-3">
-                    <div class="kpi-value" id="kpi-resolution" style="color: var(--accent-green);">--</div>
-                    <div class="kpi-label">Resolution Rate</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="kpi-card"><div class="accent-bar accent-cyan"></div>
-                <div class="ps-3">
-                    <div class="kpi-value" id="kpi-monetary" style="color: var(--accent-cyan);">--</div>
-                    <div class="kpi-label">Monetary Relief</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="kpi-card"><div class="accent-bar accent-amber"></div>
-                <div class="ps-3">
-                    <div class="kpi-value" id="kpi-timely" style="color: var(--accent-amber);">--</div>
-                    <div class="kpi-label">Timely Response</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="kpi-card"><div class="accent-bar accent-red"></div>
-                <div class="ps-3">
-                    <div class="kpi-value" id="kpi-progress" style="color: var(--accent-red);">--</div>
-                    <div class="kpi-label">In Progress</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="kpi-card"><div class="accent-bar accent-purple"></div>
-                <div class="ps-3">
-                    <div class="kpi-value" id="kpi-narrative" style="color: var(--accent-purple);">--</div>
-                    <div class="kpi-label">With Narrative</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Health Score + Monthly Trend -->
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="chart-container text-center" style="height: 340px;">
-                <h5><i class="fas fa-heartbeat me-2"></i>Health Score</h5>
-                <div id="health-display" class="mt-4">
-                    <div class="spinner-cw"></div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-9">
-            <div class="chart-container" style="height: 340px;">
-                <h5><i class="fas fa-chart-area me-2"></i>Monthly Complaint Trend</h5>
-                <div style="position: relative; height: 280px;"><canvas id="trendChart"></canvas></div>
-            </div>
-        </div>
+        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-indigo"></div><div class="ps-3"><div class="kpi-value" id="kpi-total" style="font-size:1.6rem; color: var(--accent-indigo-light);">--</div><div class="kpi-label">Total Complaints</div></div></div></div>
+        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-green"></div><div class="ps-3"><div class="kpi-value" id="kpi-resolution" style="font-size:1.6rem; color: var(--accent-green);">--</div><div class="kpi-label">Resolution Rate</div></div></div></div>
+        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-cyan"></div><div class="ps-3"><div class="kpi-value" id="kpi-monetary" style="font-size:1.6rem; color: var(--accent-cyan);">--</div><div class="kpi-label">Monetary Relief</div></div></div></div>
+        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-amber"></div><div class="ps-3"><div class="kpi-value" id="kpi-timely" style="font-size:1.6rem; color: var(--accent-amber);">--</div><div class="kpi-label">Timely Response</div></div></div></div>
+        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-red"></div><div class="ps-3"><div class="kpi-value" id="kpi-progress" style="font-size:1.6rem; color: var(--accent-red);">--</div><div class="kpi-label">In Progress</div></div></div></div>
+        <div class="col-md-2"><div class="kpi-card"><div class="accent-bar accent-purple"></div><div class="ps-3"><div class="kpi-value" id="kpi-health" style="font-size:1.6rem; color: var(--accent-purple);">--</div><div class="kpi-label">Health Grade</div></div></div></div>
     </div>
 
-    <!-- Response Breakdown + Product Breakdown -->
-    <div class="row g-3">
-        <div class="col-md-5">
+    <!-- Monthly Trend (ACTUAL VOLUMES) + Response Breakdown -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-8">
+            <div class="chart-container" style="height: 380px;">
+                <h5><i class="fas fa-chart-area me-2"></i>Monthly Complaint Trend (Actual CFPB Volumes)</h5>
+                <div style="position: relative; height: 320px;"><canvas id="trendChart"></canvas></div>
+            </div>
+        </div>
+        <div class="col-md-4">
             <div class="chart-container" style="height: 380px;">
                 <h5><i class="fas fa-chart-pie me-2"></i>Response Breakdown</h5>
                 <div style="position: relative; height: 320px;"><canvas id="responseChart"></canvas></div>
             </div>
         </div>
-        <div class="col-md-7">
-            <div class="chart-container" style="height: 380px;">
-                <h5><i class="fas fa-boxes-stacked me-2"></i>Product Categories</h5>
-                <div style="position: relative; height: 320px;"><canvas id="productChart"></canvas></div>
+    </div>
+
+    <!-- Expandable Sections -->
+    <div class="accordion" id="dashAccordion">
+
+        <!-- Section: Products & Issues -->
+        <div class="card-cw mb-3">
+            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#sec-products">
+                <h5 style="font-weight: 700; margin: 0;"><i class="fas fa-boxes-stacked me-2"></i>Products & Issues</h5>
+                <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
+            </div>
+            <div class="collapse" id="sec-products">
+                <div class="p-3 pt-0">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="chart-container" style="height: 350px;">
+                                <h6>Product Categories</h6>
+                                <div style="position: relative; height: 290px;"><canvas id="productChart"></canvas></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="chart-container" style="height: 350px;">
+                                <h6>Top Issues</h6>
+                                <div style="position: relative; height: 290px;"><canvas id="issueChart"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+
+        <!-- Section: Geographic -->
+        <div class="card-cw mb-3">
+            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#sec-geo">
+                <h5 style="font-weight: 700; margin: 0;"><i class="fas fa-map-marked-alt me-2"></i>Geographic Analysis</h5>
+                <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
+            </div>
+            <div class="collapse" id="sec-geo">
+                <div class="p-3 pt-0">
+                    <div class="row g-3">
+                        <div class="col-md-7">
+                            <div class="chart-container" style="height: 350px;">
+                                <h6>Top States</h6>
+                                <div style="position: relative; height: 290px;"><canvas id="stateChart"></canvas></div>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="chart-container" style="height: 350px;">
+                                <h6>Submission Channels</h6>
+                                <div style="position: relative; height: 290px;"><canvas id="channelChart"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section: Text Analytics & Sentiment -->
+        <div class="card-cw mb-3">
+            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#sec-text">
+                <h5 style="font-weight: 700; margin: 0;"><i class="fas fa-comment-dots me-2"></i>Narrative Analytics & Sentiment</h5>
+                <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
+            </div>
+            <div class="collapse" id="sec-text">
+                <div class="p-3 pt-0">
+                    <div class="row g-3 mb-3">
+                        <!-- Sentiment KPIs -->
+                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-score" style="font-size:1.8rem;">--</div><div class="kpi-label">Sentiment Score</div></div></div>
+                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-negative" style="font-size:1.4rem; color: var(--accent-red);">--</div><div class="kpi-label">Negative Mentions</div></div></div>
+                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-positive" style="font-size:1.4rem; color: var(--accent-green);">--</div><div class="kpi-label">Positive Mentions</div></div></div>
+                        <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="sent-narratives" style="font-size:1.4rem; color: var(--accent-cyan);">--</div><div class="kpi-label">Total Narratives</div></div></div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="chart-container" style="height: 350px;">
+                                <h6>Top Words in Complaints</h6>
+                                <div style="position: relative; height: 290px;"><canvas id="wordsChart"></canvas></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="chart-container" style="height: 350px;">
+                                <h6>Complaint Themes</h6>
+                                <div style="position: relative; height: 290px;"><canvas id="themesChart"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section: Bank Comparison -->
+        <div class="card-cw mb-3">
+            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#sec-banks">
+                <h5 style="font-weight: 700; margin: 0;"><i class="fas fa-university me-2"></i>Bank Comparison</h5>
+                <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
+            </div>
+            <div class="collapse" id="sec-banks">
+                <div class="p-3 pt-0">
+                    <div class="table-responsive">
+                        <table class="table table-cw"><thead><tr><th>#</th><th>Institution</th><th>Complaints</th><th>Resolution</th><th>Monetary</th><th>Timely</th><th>Health</th><th>Grade</th></tr></thead>
+                        <tbody id="bankTableBody"></tbody></table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- end accordion -->
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16'];
-let trendChart, responseChart, productChart;
-
-function getCompany() {
-    return document.getElementById('companyFilter').value;
-}
-
-function qs(params) {
-    const c = getCompany();
-    if (c) params.company = c;
-    return '?' + new URLSearchParams(params).toString();
-}
+const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16','#64748b','#d946ef'];
+let charts = {};
+function C() { return document.getElementById('companyFilter').value; }
+function qs(e={}) { const p={}; const c=C(); if(c) p.company=c; Object.assign(p,e); return '?'+new URLSearchParams(p); }
+function destroyChart(n) { if(charts[n]){charts[n].destroy(); delete charts[n];} }
+function fmt(n) { return n!=null ? Number(n).toLocaleString() : '--'; }
 
 async function loadCompanies() {
-    const res = await fetch('/api/companies');
-    const data = await res.json();
-    const sel = document.getElementById('companyFilter');
-    data.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c.company;
-        opt.textContent = `${c.company} (${c.count.toLocaleString()})`;
-        sel.appendChild(opt);
-    });
+    const r = await fetch('/api/companies'); const d = await r.json();
+    const s = document.getElementById('companyFilter');
+    d.forEach(c => { const o=document.createElement('option'); o.value=c.company; o.textContent=`${c.company} (${c.count.toLocaleString()})`; s.appendChild(o); });
 }
 
 async function loadKPIs() {
-    const res = await fetch('/api/kpis' + qs({}));
-    const d = await res.json();
-    document.getElementById('kpi-total').textContent = d.total.toLocaleString();
-    document.getElementById('kpi-resolution').textContent = d.resolution_rate + '%';
-    document.getElementById('kpi-monetary').textContent = d.monetary_relief_rate + '%';
-    document.getElementById('kpi-timely').textContent = d.timely_rate + '%';
-    document.getElementById('kpi-progress').textContent = d.in_progress.toLocaleString();
-    document.getElementById('kpi-narrative').textContent = d.with_narrative.toLocaleString();
-}
-
-async function loadHealth() {
-    const res = await fetch('/api/health-score' + qs({}));
-    const d = await res.json();
-    const pct = d.score + '%';
-    const gradeClass = 'health-' + d.grade.toLowerCase();
-    document.getElementById('health-display').innerHTML = `
-        <div class="health-score-ring ${gradeClass}" style="--pct: ${pct}">
-            <div class="health-inner">
-                <div class="grade">${d.grade}</div>
-                <div class="score">${d.score}/100</div>
-            </div>
-        </div>
-        <div class="mt-3" style="font-size: 0.8rem; color: var(--text-secondary);">
-            <div class="d-flex justify-content-between mb-1"><span>Resolution</span><span>${d.components.resolution}%</span></div>
-            <div class="d-flex justify-content-between mb-1"><span>Monetary Relief</span><span>${d.components.monetary_relief}%</span></div>
-            <div class="d-flex justify-content-between mb-1"><span>Timely Response</span><span>${d.components.timely_response}%</span></div>
-            <div class="d-flex justify-content-between"><span>Trend</span><span>${d.components.trend}%</span></div>
-        </div>
-    `;
+    const [kr, hr] = await Promise.all([fetch('/api/kpis'+qs()), fetch('/api/health-score'+qs())]);
+    const k=await kr.json(), h=await hr.json();
+    document.getElementById('kpi-total').textContent=fmt(k.total);
+    document.getElementById('kpi-resolution').textContent=k.resolution_rate+'%';
+    document.getElementById('kpi-monetary').textContent=k.monetary_relief_rate+'%';
+    document.getElementById('kpi-timely').textContent=k.timely_rate+'%';
+    document.getElementById('kpi-progress').textContent=fmt(k.in_progress);
+    document.getElementById('kpi-health').textContent=h.grade+' ('+h.score+')';
 }
 
 async function loadTrend() {
-    const res = await fetch('/api/monthly-trend' + qs({}));
+    // Use actual CFPB monthly volumes (not sampled data)
+    const res = await fetch('/api/monthly-volume'+qs());
     const data = await res.json();
-    const ctx = document.getElementById('trendChart').getContext('2d');
-    if (trendChart) trendChart.destroy();
-    trendChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: data.map(d => d.month),
-            datasets: [{
-                label: 'Complaints',
-                data: data.map(d => d.count),
-                borderColor: '#6366f1',
-                backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                fill: true,
-                tension: 0.4,
-                pointRadius: 3,
-                pointBackgroundColor: '#818cf8',
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
+    destroyChart('trend');
+    charts.trend = new Chart(document.getElementById('trendChart').getContext('2d'), {
+        type: 'line', data: {
+            labels: data.map(d=>d.month),
+            datasets: [{ label: 'Complaints', data: data.map(d=>d.count),
+                borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)',
+                fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#818cf8' }]
+        }, options: { responsive: true, maintainAspectRatio: false,
             plugins: { legend: { display: false } },
-            scales: {
-                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3', maxTicksLimit: 12 } },
-                y: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' }, beginAtZero: true }
-            }
-        }
+            scales: { x: { grid:{color:'rgba(99,102,241,0.05)'}, ticks:{color:'#8b8fa3',maxTicksLimit:12} },
+                      y: { grid:{color:'rgba(99,102,241,0.05)'}, ticks:{color:'#8b8fa3'}, beginAtZero:true } } }
     });
 }
 
 async function loadResponse() {
-    const res = await fetch('/api/response-breakdown' + qs({}));
-    const data = await res.json();
-    const ctx = document.getElementById('responseChart').getContext('2d');
-    if (responseChart) responseChart.destroy();
-    responseChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: data.map(d => d.response),
-            datasets: [{
-                data: data.map(d => d.count),
-                backgroundColor: COLORS,
-                borderWidth: 0,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'right', labels: { color: '#8b8fa3', font: { size: 11 }, padding: 12 } }
-            }
-        }
+    const r = await fetch('/api/response-breakdown'+qs()); const d = await r.json();
+    const RC = {'Closed with explanation':'#6366f1','Closed with monetary relief':'#22c55e','Closed with non-monetary relief':'#f59e0b','In progress':'#ef4444'};
+    destroyChart('response');
+    charts.response = new Chart(document.getElementById('responseChart').getContext('2d'), {
+        type: 'doughnut', data: { labels: d.map(x=>x.response), datasets: [{ data: d.map(x=>x.count), backgroundColor: d.map(x=>(RC[x.response]||'#64748b')+'cc'), borderWidth:0 }] },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{color:'#8b8fa3',font:{size:10},padding:8}}} }
     });
 }
 
 async function loadProducts() {
-    const res = await fetch('/api/product-breakdown' + qs({}));
-    const data = await res.json();
-    const ctx = document.getElementById('productChart').getContext('2d');
-    if (productChart) productChart.destroy();
-    productChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: data.map(d => d.product),
-            datasets: [{
-                label: 'Complaints',
-                data: data.map(d => d.count),
-                backgroundColor: COLORS.map(c => c + '99'),
-                borderColor: COLORS,
-                borderWidth: 1,
-                borderRadius: 6,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { grid: { color: 'rgba(99,102,241,0.05)' }, ticks: { color: '#8b8fa3' } },
-                y: { grid: { display: false }, ticks: { color: '#e0e0e8', font: { size: 11 } } }
-            }
-        }
+    const r = await fetch('/api/product-breakdown'+qs()); const d = await r.json();
+    destroyChart('product');
+    charts.product = new Chart(document.getElementById('productChart').getContext('2d'), {
+        type: 'bar', data: { labels: d.map(x=>x.product), datasets: [{ data: d.map(x=>x.count), backgroundColor: COLORS.map(c=>c+'99'), borderRadius:6 }] },
+        options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:10}}}} }
     });
 }
 
-function loadAll() {
-    loadKPIs();
-    loadHealth();
-    loadTrend();
-    loadResponse();
-    loadProducts();
-    // Update export link with company filter
-    const exportBtn = document.getElementById('exportBtn');
-    if (exportBtn) {
-        const c = getCompany();
-        exportBtn.href = '/api/export/monthly-data' + (c ? '?company=' + encodeURIComponent(c) : '');
+async function loadIssues() {
+    const r = await fetch('/api/issue-breakdown'+qs()); const d = await r.json();
+    destroyChart('issue');
+    charts.issue = new Chart(document.getElementById('issueChart').getContext('2d'), {
+        type: 'bar', data: { labels: d.map(x=>x.issue.length>40?x.issue.substring(0,40)+'...':x.issue), datasets: [{ data: d.map(x=>x.count), backgroundColor: COLORS.map(c=>c+'99'), borderRadius:6 }] },
+        options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}} }
+    });
+}
+
+async function loadStates() {
+    const r = await fetch('/api/state-breakdown'+qs()); const d = await r.json();
+    destroyChart('state');
+    charts.state = new Chart(document.getElementById('stateChart').getContext('2d'), {
+        type: 'bar', data: { labels: d.slice(0,15).map(x=>x.state), datasets: [{ data: d.slice(0,15).map(x=>x.count), backgroundColor:'#6366f199', borderColor:'#6366f1', borderWidth:1, borderRadius:6 }] },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8'}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}} }
+    });
+}
+
+async function loadChannels() {
+    const r = await fetch('/api/submission-channels'+qs()); const d = await r.json();
+    destroyChart('channel');
+    charts.channel = new Chart(document.getElementById('channelChart').getContext('2d'), {
+        type: 'doughnut', data: { labels: d.map(x=>x.channel), datasets: [{ data: d.map(x=>x.count), backgroundColor: COLORS.slice(0,d.length).map(c=>c+'cc'), borderWidth:0 }] },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3',font:{size:11},padding:10}}} }
+    });
+}
+
+async function loadTextAnalytics() {
+    try {
+        const [wr, sr, tr, nr] = await Promise.all([
+            fetch('/api/text/top-words'+qs()), fetch('/api/text/sentiment'+qs()),
+            fetch('/api/text/themes'+qs()), fetch('/api/text/narrative-stats'+qs())
+        ]);
+        const words = await wr.json(), sent = await sr.json(), themes = await tr.json(), nstats = await nr.json();
+
+        // Sentiment KPIs
+        const score = sent.sentiment_score || 0;
+        document.getElementById('sent-score').textContent = score > 0 ? '+'+score.toFixed(2) : score.toFixed(2);
+        document.getElementById('sent-score').style.color = score > 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+        document.getElementById('sent-negative').textContent = fmt(sent.negative_count);
+        document.getElementById('sent-positive').textContent = fmt(sent.positive_count);
+        document.getElementById('sent-narratives').textContent = fmt(nstats.total_with_narrative);
+
+        // Top words chart
+        const topW = words.slice(0, 20);
+        destroyChart('words');
+        charts.words = new Chart(document.getElementById('wordsChart').getContext('2d'), {
+            type: 'bar', data: { labels: topW.map(w=>w.word), datasets: [{ data: topW.map(w=>w.count), backgroundColor: '#6366f199', borderRadius:4 }] },
+            options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}} }
+        });
+
+        // Themes chart
+        destroyChart('themes');
+        charts.themes = new Chart(document.getElementById('themesChart').getContext('2d'), {
+            type: 'bar', data: { labels: themes.map(t=>t.theme), datasets: [{ data: themes.map(t=>t.count), backgroundColor: COLORS.slice(0,themes.length).map(c=>c+'99'), borderRadius:6 }] },
+            options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9},maxRotation:45}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}} }
+        });
+    } catch(e) {
+        console.log('Text analytics not available:', e);
     }
 }
 
-loadCompanies();
-loadAll();
+async function loadBanks() {
+    const r = await fetch('/api/bank-comparison'); const d = await r.json();
+    const gc = {A:'var(--accent-green)',B:'var(--accent-cyan)',C:'var(--accent-amber)',D:'var(--accent-orange)',F:'var(--accent-red)'};
+    document.getElementById('bankTableBody').innerHTML = d.map((b,i) => `<tr>
+        <td style="color:var(--text-muted);font-weight:600;">${i+1}</td>
+        <td style="font-weight:600;">${b.company}</td><td>${fmt(b.total_complaints)}</td>
+        <td><span style="color:${b.resolution_rate>85?'var(--accent-green)':'var(--accent-amber)'};font-weight:600;">${b.resolution_rate}%</span></td>
+        <td>${b.monetary_relief_rate}%</td><td>${b.timely_rate}%</td><td style="font-weight:700;">${b.health_score}</td>
+        <td><span style="color:${gc[b.health_grade]||'var(--text-muted)'};font-weight:800;font-size:1.1rem;">${b.health_grade}</span></td>
+    </tr>`).join('');
+}
+
+function loadAll() {
+    const eb = document.getElementById('exportBtn');
+    if(eb) { const c=C(); eb.href='/api/export/monthly-data'+(c?'?company='+encodeURIComponent(c):''); }
+    loadKPIs(); loadTrend(); loadResponse();
+    loadProducts(); loadIssues(); loadStates(); loadChannels();
+    loadTextAnalytics(); loadBanks();
+}
+
+// Load expandable section charts when opened
+document.querySelectorAll('.collapse').forEach(el => {
+    el.addEventListener('shown.bs.collapse', () => {
+        // Trigger chart resize
+        Object.values(charts).forEach(c => c.resize && c.resize());
+    });
+});
+
+loadCompanies().then(() => loadAll());
 </script>
 {% endblock %}
