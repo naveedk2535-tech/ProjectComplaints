@@ -336,10 +336,13 @@ const SL={
         const[pr,ir,spr,irm]=await Promise.all([fetch('/api/product-breakdown'+qs()),fetch('/api/issue-breakdown'+qs()),fetch('/api/sub-product-breakdown'+qs()),fetch('/api/issue-resolution-mix'+qs())]);
         const products=await pr.json(),issues=await ir.json(),subp=await spr.json(),irmix=await irm.json();const pt=products.reduce((s,x)=>s+x.count,0);
         D('product');ch.product=new Chart(document.getElementById('productChart').getContext('2d'),{type:'bar',data:{labels:products.map(x=>`${x.product} (${(x.count/pt*100).toFixed(0)}%)`),datasets:[{data:products.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
-        D('issue');ch.issue=new Chart(document.getElementById('issueChart').getContext('2d'),{type:'bar',data:{labels:issues.map(x=>x.issue.length>35?x.issue.substring(0,35)+'...':x.issue),datasets:[{data:issues.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
+        const it=issues.reduce((s,x)=>s+x.count,0);
+        D('issue');ch.issue=new Chart(document.getElementById('issueChart').getContext('2d'),{type:'bar',data:{labels:issues.map(x=>{const n=x.issue.length>30?x.issue.substring(0,30)+'...':x.issue;return `${n} (${(x.count/it*100).toFixed(0)}%)`;}),datasets:[{data:issues.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}}}}});
         const spt=subp.reduce((s,x)=>s+x.count,0);D('subProduct');ch.subProduct=new Chart(document.getElementById('subProductChart').getContext('2d'),{type:'bar',data:{labels:subp.slice(0,10).map(x=>`${x.sub_product.substring(0,25)} (${(x.count/spt*100).toFixed(0)}%)`),datasets:[{data:subp.slice(0,10).map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}}}}});
+        // Issue Resolution Quality - show as 100% stacked (percentages)
         const irIs=Object.keys(irmix).slice(0,10),resps=['Closed with explanation','Closed with monetary relief','Closed with non-monetary relief','In progress'];
-        D('issueRes');ch.issueRes=new Chart(document.getElementById('issueResChart').getContext('2d'),{type:'bar',data:{labels:irIs.map(i=>i.length>28?i.substring(0,28)+'...':i),datasets:resps.map(r=>({label:r,data:irIs.map(i=>irmix[i][r]||0),backgroundColor:(RC[r]||'#64748b')+'99'}))},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:7}}}},scales:{x:{stacked:true,grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:7}}}}}});
+        const irTotals=irIs.map(i=>resps.reduce((s,r)=>s+(irmix[i][r]||0),0));
+        D('issueRes');ch.issueRes=new Chart(document.getElementById('issueResChart').getContext('2d'),{type:'bar',data:{labels:irIs.map((i,idx)=>{const n=i.length>25?i.substring(0,25)+'...':i;return n;}),datasets:resps.map(r=>({label:r,data:irIs.map((i,idx)=>{const t=irTotals[idx];return t?Math.round((irmix[i][r]||0)/t*100):0;}),backgroundColor:(RC[r]||'#64748b')+'99'}))},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:7}}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x}%`}}},scales:{x:{stacked:true,max:100,grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3',callback:v=>v+'%'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:7}}}}}});
         // Word Intelligence (part of same section)
         const[wr,sr,tr,twr,nsr]=await Promise.all([fetch('/api/text/top-words'+qs()),fetch('/api/text/sentiment'+qs()),fetch('/api/text/themes'+qs()),fetch('/api/text/word-trends'+qs()),fetch('/api/text/narrative-stats'+qs())]);
         const words=await wr.json(),sent=await sr.json(),themes=await tr.json();let wt=[],ns={};try{wt=await twr.json();}catch(e){}try{ns=await nsr.json();}catch(e){}
@@ -381,11 +384,25 @@ const SL={
     },
 };
 
-document.querySelectorAll('.collapse[data-section]').forEach(el=>{el.addEventListener('show.bs.collapse',function(){const s=this.dataset.section;if(SL[s])SL[s]();});});
+// Still lazy-load on expand for sections not yet loaded
+document.querySelectorAll('.collapse[data-section]').forEach(el=>{
+    el.addEventListener('show.bs.collapse',function(){
+        if(!this.dataset.loaded){this.dataset.loaded='1';const s=this.dataset.section;if(SL[s])SL[s]();}
+    });
+});
 
 function loadAll(){
+    // Load main dashboard immediately
     loadKPIs();loadMoM();loadTrend();loadResponse();
-    document.querySelectorAll('.collapse.show[data-section]').forEach(el=>{const s=el.dataset.section;if(SL[s])SL[s]();});
+
+    // Preload ALL sections in background (staggered so main renders first)
+    setTimeout(()=>{
+        ['top5','client','geo','banks','sources'].forEach((s,i)=>{
+            setTimeout(()=>{
+                if(SL[s]){SL[s]();document.querySelector(`[data-section="${s}"]`)?.setAttribute('data-loaded','1');}
+            }, i*150);
+        });
+    }, 200);
 }
 loadCompanies().then(()=>loadAll());
 </script>
