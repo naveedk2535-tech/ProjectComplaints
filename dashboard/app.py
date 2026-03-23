@@ -540,6 +540,64 @@ def create_app():
         result = refresh_data(company=company)
         return jsonify(result)
 
+    @app.route('/api/admin/decompress-db', methods=['POST'])
+    @admin_required
+    def admin_decompress_db():
+        """One-time: decompress uploaded .gz database"""
+        import gzip, shutil
+        gz_path = os.path.join(data_dir, 'complaints.db.gz')
+        db_path = os.path.join(data_dir, 'complaints.db')
+        if os.path.exists(gz_path):
+            with gzip.open(gz_path, 'rb') as f_in:
+                with open(db_path, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            os.remove(gz_path)
+            return jsonify({'success': True, 'size': os.path.getsize(db_path)})
+        return jsonify({'error': 'No .gz file found'}), 404
+
+    # ── Admin User Edit ─────────────────────────────────────────
+    @app.route('/api/admin/user/<int:user_id>/edit', methods=['POST'])
+    @admin_required
+    def admin_edit_user(user_id):
+        user = User.query.get_or_404(user_id)
+        data = request.json
+        if 'name' in data:
+            user.name = data['name']
+        if 'email' in data:
+            existing = User.query.filter(User.email == data['email'], User.id != user_id).first()
+            if existing:
+                return jsonify({'error': 'Email already in use'}), 400
+            user.email = data['email']
+        if 'role' in data and data['role'] in ('user', 'admin'):
+            user.role = data['role']
+        if 'subscription_status' in data and data['subscription_status'] in ('trial', 'active', 'expired', 'cancelled'):
+            user.subscription_status = data['subscription_status']
+        if 'is_active' in data:
+            user.is_active = bool(data['is_active'])
+        if 'password' in data and data['password']:
+            user.set_password(data['password'])
+        if 'trial_days' in data:
+            user.trial_end = date.today() + timedelta(days=int(data['trial_days']))
+            if user.subscription_status != 'active':
+                user.subscription_status = 'trial'
+        db.session.commit()
+        return jsonify({'success': True})
+
+    @app.route('/api/admin/user/<int:user_id>/details')
+    @admin_required
+    def admin_get_user(user_id):
+        user = User.query.get_or_404(user_id)
+        return jsonify({
+            'id': user.id, 'name': user.name, 'email': user.email,
+            'role': user.role, 'subscription_status': user.subscription_status,
+            'is_active': user.is_active,
+            'trial_start': user.trial_start.isoformat() if user.trial_start else None,
+            'trial_end': user.trial_end.isoformat() if user.trial_end else None,
+            'trial_days_remaining': user.trial_days_remaining,
+            'created_at': user.created_at.isoformat() if user.created_at else None,
+            'last_login': user.last_login.isoformat() if user.last_login else None,
+        })
+
     # ── Stripe (Placeholder) ────────────────────────────────────
     @app.route('/api/stripe/create-checkout-session', methods=['POST'])
     @login_required

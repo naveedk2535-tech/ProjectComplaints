@@ -5,3 +5,5 @@ __pycache__/
 instance/
 .DS_Store
 venv/
+data/complaints.db.gz
+data/*.gz
