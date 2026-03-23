@@ -1,13 +1,30 @@
 """
 Text analytics service for analyzing complaint narratives.
 Extracts word frequencies, sentiment, and themes from complaint text.
+Uses in-memory caching to avoid re-processing 35K+ narratives on every request.
 """
 
 import re
 import statistics
+import time
 from collections import Counter
+from functools import lru_cache
 
 from models.database import db, Complaint
+
+# Simple time-based cache for expensive text processing
+_cache = {}
+_CACHE_TTL = 300  # 5 minutes
+
+
+def _cached(key, func):
+    """Return cached result or compute and cache."""
+    now = time.time()
+    if key in _cache and now - _cache[key][1] < _CACHE_TTL:
+        return _cache[key][0]
+    result = func()
+    _cache[key] = (result, now)
+    return result
 
 # ---------------------------------------------------------------------------
 # Stop words – common English words plus CFPB redaction placeholders
@@ -79,16 +96,24 @@ def _tokenize(text):
 # Public API
 # ---------------------------------------------------------------------------
 
+def _build_word_counter(company=None):
+    """Build a word counter from all narratives (cached)."""
+    def _compute():
+        rows = _base_query(company).with_entities(Complaint.narrative).all()
+        counter = Counter()
+        for (narrative,) in rows:
+            counter.update(_tokenize(narrative))
+        return counter
+    return _cached(f'word_counter_{company}', _compute)
+
+
 def get_top_words(company=None, limit=50):
     """
     Extract the most frequent words from complaint narratives.
 
     Returns a list of dicts: [{"word": str, "count": int}, ...]
     """
-    rows = _base_query(company).with_entities(Complaint.narrative).all()
-    counter = Counter()
-    for (narrative,) in rows:
-        counter.update(_tokenize(narrative))
+    counter = _build_word_counter(company)
     return [{"word": word, "count": count} for word, count in counter.most_common(limit)]
 
 
@@ -128,6 +153,12 @@ def get_sentiment_summary(company=None):
     Returns a dict with positive_count, negative_count, neutral_count,
     sentiment_score (-1 to 1), top_positive_words, and top_negative_words.
     """
+    def _compute():
+        return _compute_sentiment(company)
+    return _cached(f'sentiment_{company}', _compute)
+
+
+def _compute_sentiment(company=None):
     rows = _base_query(company).with_entities(Complaint.narrative).all()
 
     positive_counter = Counter()
@@ -190,6 +221,12 @@ def get_complaint_themes(company=None, limit=10):
     [{"theme": str, "count": int, "percentage": float,
       "sample_words": [{"word": str, "count": int}]}, ...]
     """
+    def _compute():
+        return _compute_themes(company, limit)
+    return _cached(f'themes_{company}_{limit}', _compute)
+
+
+def _compute_themes(company=None, limit=10):
     rows = _base_query(company).with_entities(Complaint.narrative).all()
     total_narratives = len(rows)
     if total_narratives == 0:

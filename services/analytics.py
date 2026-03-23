@@ -196,7 +196,13 @@ def get_companies():
     return [{'company': r.company, 'count': r.count} for r in q.all()]
 
 
+_bank_comparison_cache = {'data': None, 'time': 0}
+
 def get_bank_comparison():
+    import time as _time
+    if _bank_comparison_cache['data'] and _time.time() - _bank_comparison_cache['time'] < 300:
+        return _bank_comparison_cache['data']
+
     companies = get_companies()[:20]
     results = []
     for c in companies:
@@ -211,6 +217,8 @@ def get_bank_comparison():
             'health_score': health['score'],
             'health_grade': health['grade'],
         })
+    _bank_comparison_cache['data'] = results
+    _bank_comparison_cache['time'] = _time.time()
     return results
 
 
