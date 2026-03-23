@@ -857,6 +857,104 @@ def create_app():
         _top5_cache['time'][cache_key] = _time.time()
         return jsonify(result)
 
+    # ── MEGA ENDPOINT: All dashboard data in one request ──────
+    _dashboard_cache = {}
+
+    @app.route('/api/dashboard-data')
+    @login_required
+    def api_dashboard_data():
+        """Returns ALL dashboard data in a single response. Cached 5 min per company."""
+        import time as _t
+        from services.analytics import (get_kpis, get_health_score, get_mom_changes,
+            get_product_breakdown, get_issue_breakdown, get_response_breakdown,
+            get_state_breakdown, get_submission_channels, get_sub_product_breakdown,
+            get_issue_resolution_mix, get_bank_comparison)
+        from models.database import MonthlyVolume
+
+        company = request.args.get('company') or ''
+        months_back = request.args.get('months', type=int)
+        cache_key = f'{company}_{months_back}'
+
+        if cache_key in _dashboard_cache and _t.time() - _dashboard_cache[cache_key][1] < 300:
+            return jsonify(_dashboard_cache[cache_key][0])
+
+        # Build everything
+        kpis = get_kpis(company=company or None)
+        health = get_health_score(company=company or None)
+        mom = get_mom_changes(company=company or None)
+
+        # Monthly volume
+        vol_q = db.session.query(MonthlyVolume.month, db.func.sum(MonthlyVolume.total_complaints).label('total'))
+        if company:
+            vol_q = vol_q.filter(MonthlyVolume.company == company)
+        vol_q = vol_q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
+        vol_raw = [{'month': r.month, 'count': r.total} for r in vol_q.all()]
+        # Normalize outliers
+        if len(vol_raw) > 2:
+            for i in range(1, len(vol_raw) - 1):
+                avg_n = (vol_raw[i-1]['count'] + vol_raw[i+1]['count']) / 2
+                if vol_raw[i]['count'] > avg_n * 2.5:
+                    vol_raw[i]['count'] = int(avg_n)
+        if months_back and len(vol_raw) > months_back:
+            vol_raw = vol_raw[-months_back:]
+        # Forecast
+        if vol_raw:
+            today = date.today()
+            cur_m = f"{today.year}-{today.month:02d}"
+            if vol_raw[-1]['month'] == cur_m:
+                vol_raw[-1]['partial'] = True
+                full = [r for r in vol_raw[:-1]]
+                avg3 = sum(m['count'] for m in full[-3:]) / max(len(full[-3:]), 1) if full else vol_raw[-1]['count']
+                ext = int(vol_raw[-1]['count'] * 31 / max(today.day, 1))
+                vol_raw[-1]['forecast'] = int(avg3 * 0.7 + ext * 0.3)
+                vol_raw[-1]['actual_so_far'] = vol_raw[-1]['count']
+
+        responses = get_response_breakdown(company=company or None)
+        products = get_product_breakdown(company=company or None)
+        issues = get_issue_breakdown(company=company or None)
+        sub_products = get_sub_product_breakdown(company=company or None)
+        states = get_state_breakdown(company=company or None, limit=15)
+        channels = get_submission_channels(company=company or None)
+        issue_res = get_issue_resolution_mix(company=company or None)
+
+        # Peer average
+        peer = None
+        if company:
+            from sqlalchemy import func as sqf, case as sqcase
+            prods = [r[0] for r in db.session.query(Complaint.product).filter(Complaint.company == company).distinct().all()]
+            if prods:
+                pq = db.session.query(
+                    sqf.count().label('t'),
+                    sqf.sum(sqcase((Complaint.company_response.like('Closed%'), 1), else_=0)).label('cl'),
+                    sqf.sum(sqcase((Complaint.company_response == 'Closed with monetary relief', 1), else_=0)).label('mo'),
+                    sqf.sum(sqcase((Complaint.timely_response == True, 1), else_=0)).label('ti'),
+                ).filter(Complaint.company != company, Complaint.product.in_(prods))
+                pr = pq.first()
+                pt = pr[0] or 0
+                if pt:
+                    pcl = pr[1] or 0
+                    pmo = pr[2] or 0
+                    pti = pr[3] or 0
+                    peer = {
+                        'resolution_rate': round(pcl / pt * 100, 1),
+                        'monetary_relief_rate': round(pmo / pt * 100, 1),
+                        'timely_rate': round(pti / pt * 100, 1),
+                        'peer_count': db.session.query(Complaint.company).filter(Complaint.company != company, Complaint.product.in_(prods)).distinct().count(),
+                        'total': pt,
+                    }
+
+        result = {
+            'kpis': kpis, 'health': health, 'mom': mom,
+            'monthly_volume': vol_raw, 'responses': responses,
+            'products': products, 'issues': issues,
+            'sub_products': sub_products, 'states': states,
+            'channels': channels, 'issue_resolution': issue_res,
+            'peer': peer,
+        }
+
+        _dashboard_cache[cache_key] = (result, _t.time())
+        return jsonify(result)
+
     @app.route('/api/data-sources')
     @login_required
     def api_data_sources():

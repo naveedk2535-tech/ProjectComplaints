@@ -211,8 +211,63 @@ async function loadCompanies(){
 }
 function tglCmp(cb){if(cb.checked)selCmp.add(cb.value);else selCmp.delete(cb.value);
     document.getElementById('cmp-label').textContent=selCmp.size?selCmp.size+' compared':'Compare...';
-    document.getElementById('cmp-label').style.color=selCmp.size?'var(--text-primary)':'var(--text-muted)';loadTrend();loadResponse();}
+    document.getElementById('cmp-label').style.color=selCmp.size?'var(--text-primary)':'var(--text-muted)';
+    // Re-render trend with comparison lines + response comparison
+    if(_dashData) renderTrend(_dashData.monthly_volume);
+    if(_dashData) renderResponse(_dashData.responses);
+}
 
+function renderTrend(data){
+    const ds=[];const hasForecast=data.length&&data[data.length-1].forecast;const last=data[data.length-1]||{};
+    const mainData=data.map((d,i)=>(hasForecast&&i===data.length-1)?last.forecast:d.count);
+    ds.push({label:C()||'All Companies',data:mainData,borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,0.08)',fill:true,tension:0.4,pointRadius:3,pointBackgroundColor:data.map(d=>d.partial?'#f59e0b':'#818cf8'),pointStyle:data.map(d=>d.partial?'star':'circle'),borderWidth:2});
+    if(hasForecast){
+        document.getElementById('fc-label').textContent=`| Forecast: ~${last.forecast.toLocaleString()} (${(last.actual_so_far||last.count).toLocaleString()} actual)`;
+        ds.push({label:'Actual (partial)',data:data.map((d,i)=>i===data.length-1?last.actual_so_far||d.count:null),borderColor:'transparent',pointRadius:6,pointStyle:'triangle',pointBackgroundColor:'#ef4444',showLine:false});
+    } else document.getElementById('fc-label').textContent='';
+    // Comparison lines (async - these are the only extra API calls)
+    const cmps=Array.from(selCmp);const cc=['#a855f7','#f97316','#ec4899','#14b8a6'];
+    const addComparisons=async()=>{
+        for(let i=0;i<Math.min(cmps.length,4);i++){
+            try{const cr=await fetch('/api/monthly-volume?company='+encodeURIComponent(cmps[i])+(P()?'&months='+P():''));const cd=await cr.json();const rd=cd.data||[];const lk={};rd.forEach(d=>{lk[d.month]=d.count;});
+            ds.push({label:cmps[i].substring(0,20),data:data.map(d=>lk[d.month]||null),borderColor:cc[i],borderDash:[12,4],tension:0.4,pointRadius:2,fill:false,borderWidth:2});}catch(e){}
+        }
+        D('trend');ch.trend=new Chart(document.getElementById('trendChart').getContext('2d'),{type:'line',data:{labels:data.map(d=>d.month),datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b8fa3',font:{size:9}}}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3',maxTicksLimit:12}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}});
+    };
+    if(cmps.length>0){addComparisons();}else{D('trend');ch.trend=new Chart(document.getElementById('trendChart').getContext('2d'),{type:'line',data:{labels:data.map(d=>d.month),datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b8fa3',font:{size:9}}}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3',maxTicksLimit:12}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}});}
+}
+
+function renderResponse(d){
+    const t=d.reduce((s,x)=>s+x.count,0);const cmps=Array.from(selCmp);
+    if(cmps.length>0&&C()){
+        fetch('/api/response-breakdown?company='+encodeURIComponent(cmps[0])).then(r=>r.json()).then(cd=>{
+            const ct=cd.reduce((s,x)=>s+x.count,0);const labels=[...new Set([...d.map(x=>x.response),...cd.map(x=>x.response)])];
+            const mainPcts=labels.map(l=>{const f=d.find(x=>x.response===l);return f?(f.count/t*100).toFixed(1):0;});
+            const cmpPcts=labels.map(l=>{const f=cd.find(x=>x.response===l);return f?(f.count/ct*100).toFixed(1):0;});
+            document.getElementById('resp-compare-label').textContent='vs '+cmps[0].substring(0,15);
+            D('response');ch.response=new Chart(document.getElementById('responseChart').getContext('2d'),{type:'bar',data:{labels:labels.map(l=>l.substring(0,20)),datasets:[{label:C().substring(0,15),data:mainPcts,backgroundColor:'#6366f199',borderRadius:4},{label:cmps[0].substring(0,15),data:cmpPcts,backgroundColor:'#a855f799',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b8fa3',font:{size:9}}}},scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}},y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3',callback:v=>v+'%'}}}}});
+        });
+    } else {
+        document.getElementById('resp-compare-label').textContent='';
+        D('response');ch.response=new Chart(document.getElementById('responseChart').getContext('2d'),{type:'doughnut',data:{labels:d.map(x=>`${x.response} (${(x.count/t*100).toFixed(1)}%)`),datasets:[{data:d.map(x=>x.count),backgroundColor:d.map(x=>(RC[x.response]||'#64748b')+'cc'),borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#8b8fa3',font:{size:9},padding:5}}}}});
+    }
+}
+
+function renderClient(d){
+    const products=d.products,issues=d.issues,subp=d.sub_products,irmix=d.issue_resolution;
+    const pt=products.reduce((s,x)=>s+x.count,0);
+    D('product');ch.product=new Chart(document.getElementById('productChart').getContext('2d'),{type:'bar',data:{labels:products.map(x=>`${x.product} (${(x.count/pt*100).toFixed(0)}%)`),datasets:[{data:products.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
+    const it2=issues.reduce((s,x)=>s+x.count,0);
+    D('issue');ch.issue=new Chart(document.getElementById('issueChart').getContext('2d'),{type:'bar',data:{labels:issues.map(x=>{const n=x.issue.length>30?x.issue.substring(0,30)+'...':x.issue;return `${n} (${(x.count/it2*100).toFixed(0)}%)`;}),datasets:[{data:issues.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}}}}});
+    const spt=subp.reduce((s,x)=>s+x.count,0);
+    D('subProduct');ch.subProduct=new Chart(document.getElementById('subProductChart').getContext('2d'),{type:'bar',data:{labels:subp.slice(0,10).map(x=>`${x.sub_product.substring(0,25)} (${(x.count/spt*100).toFixed(0)}%)`),datasets:[{data:subp.slice(0,10).map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}}}}});
+    // Issue resolution as 100% stacked
+    const irIs=Object.keys(irmix).slice(0,10),resps=['Closed with explanation','Closed with monetary relief','Closed with non-monetary relief','In progress'];
+    const irTotals=irIs.map(i=>resps.reduce((s,r)=>s+(irmix[i][r]||0),0));
+    D('issueRes');ch.issueRes=new Chart(document.getElementById('issueResChart').getContext('2d'),{type:'bar',data:{labels:irIs.map(i=>i.length>25?i.substring(0,25)+'...':i),datasets:resps.map(r=>({label:r,data:irIs.map((i,idx)=>{const t=irTotals[idx];return t?Math.round((irmix[i][r]||0)/t*100):0;}),backgroundColor:(RC[r]||'#64748b')+'99'}))},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:7}}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x}%`}}},scales:{x:{stacked:true,max:100,grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3',callback:v=>v+'%'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:7}}}}}});
+}
+
+// Keep old loadKPIs for backward compat but it's not called directly anymore
 async function loadKPIs(){
     const[kr,hr]=await Promise.all([fetch('/api/kpis'+qs()),fetch('/api/health-score'+qs())]);
     const k=await kr.json(),h=await hr.json();
@@ -384,25 +439,58 @@ const SL={
     },
 };
 
-// Still lazy-load on expand for sections not yet loaded
+// Lazy-load on expand for text-heavy sections
 document.querySelectorAll('.collapse[data-section]').forEach(el=>{
     el.addEventListener('show.bs.collapse',function(){
         if(!this.dataset.loaded){this.dataset.loaded='1';const s=this.dataset.section;if(SL[s])SL[s]();}
     });
 });
 
-function loadAll(){
-    // Load main dashboard immediately
-    loadKPIs();loadMoM();loadTrend();loadResponse();
+let _dashData = null; // Cached dashboard data
 
-    // Preload ALL sections in background (staggered so main renders first)
-    setTimeout(()=>{
-        ['top5','client','geo','banks','sources'].forEach((s,i)=>{
-            setTimeout(()=>{
-                if(SL[s]){SL[s]();document.querySelector(`[data-section="${s}"]`)?.setAttribute('data-loaded','1');}
-            }, i*150);
-        });
-    }, 200);
+async function loadAll(){
+    // ONE request for all core dashboard data
+    const r = await fetch('/api/dashboard-data'+qs());
+    _dashData = await r.json();
+    const d = _dashData;
+
+    // Render KPIs
+    const k=d.kpis, h=d.health;
+    document.getElementById('kpi-total').textContent=fmt(k.total);
+    document.getElementById('kpi-res').textContent=k.resolution_rate+'%';
+    document.getElementById('kpi-mon').textContent=k.monetary_relief_rate+'%';
+    document.getElementById('kpi-tim').textContent=k.timely_rate+'%';
+    document.getElementById('kpi-health').textContent=h.grade+' ('+h.score+')';
+    document.getElementById('section-label').textContent=C()||'Industry Overview';
+    if(d.peer){
+        document.getElementById('kpi-total-var').innerHTML=`<span style="color:var(--text-muted);">Peer avg: ${fmt(Math.round(d.peer.total/d.peer.peer_count))}</span>`;
+        document.getElementById('kpi-res-var').innerHTML=vHtml(k.resolution_rate,d.peer.resolution_rate,false);
+        document.getElementById('kpi-mon-var').innerHTML=vHtml(k.monetary_relief_rate,d.peer.monetary_relief_rate,false);
+        document.getElementById('kpi-tim-var').innerHTML=vHtml(k.timely_rate,d.peer.timely_rate,false);
+    } else ['kpi-total-var','kpi-res-var','kpi-mon-var','kpi-tim-var'].forEach(id=>document.getElementById(id).innerHTML='');
+
+    // Render MoM
+    const mom=d.mom;
+    const ve=document.getElementById('mom-vol');ve.textContent=(mom.volume_change_pct>0?'+':'')+mom.volume_change_pct+'%';
+    ve.style.color=mom.volume_change_pct>0?'var(--accent-red)':mom.volume_change_pct<0?'var(--accent-green)':'var(--text-muted)';
+    const me=document.getElementById('mom-mon');me.textContent=(mom.monetary_relief_change_pct>0?'+':'')+mom.monetary_relief_change_pct+'%';
+    me.style.color=mom.monetary_relief_change_pct>0?'var(--accent-green)':'var(--accent-red)';
+    document.getElementById('mom-up').innerHTML=(mom.top_growing_issues||[]).slice(0,3).map(i=>`<div class="d-flex justify-content-between"><span style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${i.issue.substring(0,28)}</span><span style="color:var(--accent-red);font-weight:600;">+${i.change_pct.toFixed(0)}%</span></div>`).join('')||'<span style="color:var(--text-muted);">No data</span>';
+    document.getElementById('mom-down').innerHTML=(mom.top_declining_issues||[]).slice(0,3).map(i=>`<div class="d-flex justify-content-between"><span style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${i.issue.substring(0,28)}</span><span style="color:var(--accent-green);font-weight:600;">${i.change_pct.toFixed(0)}%</span></div>`).join('')||'<span style="color:var(--text-muted);">No data</span>';
+
+    // Render Trend (still needs separate call for comparison lines)
+    renderTrend(d.monthly_volume);
+
+    // Render Response
+    renderResponse(d.responses);
+
+    // Render Products/Issues/SubProducts from cached data
+    renderClient(d);
+
+    // Preload remaining sections
+    ['top5','geo','banks','sources'].forEach((s,i)=>{
+        setTimeout(()=>{if(SL[s]){SL[s]();document.querySelector(`[data-section="${s}"]`)?.setAttribute('data-loaded','1');}}, i*100);
+    });
 }
 loadCompanies().then(()=>loadAll());
 </script>
