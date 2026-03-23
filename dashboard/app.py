@@ -736,6 +736,58 @@ def create_app():
         company = request.args.get('company')
         return jsonify(get_narrative_stats(company=company))
 
+    @app.route('/api/text/word-trends')
+    @login_required
+    def api_word_trends():
+        from services.text_analytics import get_monthly_word_trends
+        company = request.args.get('company')
+        return jsonify(get_monthly_word_trends(company=company))
+
+    @app.route('/api/text/trending-words')
+    @login_required
+    def api_trending_words():
+        from services.text_analytics import get_trending_words
+        company = request.args.get('company')
+        return jsonify(get_trending_words(company=company))
+
+    @app.route('/api/peer-average')
+    @login_required
+    def api_peer_average():
+        """Get average KPIs across all companies sharing same products as the selected company."""
+        from services.analytics import get_kpis, get_companies
+        company = request.args.get('company')
+        if not company:
+            return jsonify({})
+        # Get products for this company
+        products = db.session.query(Complaint.product).filter(
+            Complaint.company == company
+        ).distinct().all()
+        product_set = [p[0] for p in products]
+        # Get all companies with those products (excluding target)
+        peer_companies = db.session.query(Complaint.company).filter(
+            Complaint.company != company,
+            Complaint.product.in_(product_set)
+        ).distinct().all()
+        peer_names = [p[0] for p in peer_companies]
+        if not peer_names:
+            return jsonify({})
+        # Calculate aggregate KPIs for peers
+        from sqlalchemy import func, case
+        q = Complaint.query.filter(Complaint.company.in_(peer_names))
+        total = q.count()
+        if total == 0:
+            return jsonify({})
+        closed = q.filter(Complaint.company_response.like('Closed%')).count()
+        monetary = q.filter(Complaint.company_response == 'Closed with monetary relief').count()
+        timely = q.filter(Complaint.timely_response == True).count()
+        return jsonify({
+            'peer_count': len(peer_names),
+            'total': total,
+            'resolution_rate': round(closed / total * 100, 1),
+            'monetary_relief_rate': round(monetary / total * 100, 1),
+            'timely_rate': round(timely / total * 100, 1),
+        })
+
     # ── Stripe (Placeholder) ────────────────────────────────────
     @app.route('/api/stripe/create-checkout-session', methods=['POST'])
     @login_required

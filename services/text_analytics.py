@@ -258,3 +258,195 @@ def get_narrative_stats(company=None):
         "shortest": min(lengths),
         "median_length": round(statistics.median(lengths), 2),
     }
+
+
+def get_monthly_word_trends(company=None, words=None, months=6):
+    """
+    Track specific words month over month in complaint narratives.
+
+    If *words* is None the top 8 words are auto-detected.
+    Returns a list of dicts:
+    [{"word": str, "months": [{"month": "YYYY-MM", "count": int}, ...]}, ...]
+    """
+    rows = (
+        _base_query(company)
+        .with_entities(Complaint.date_received, Complaint.narrative)
+        .filter(Complaint.date_received.isnot(None))
+        .order_by(Complaint.date_received.desc())
+        .all()
+    )
+
+    if not rows:
+        return []
+
+    # Group narratives by month (YYYY-MM)
+    month_narratives = {}
+    for date_received, narrative in rows:
+        month_key = date_received.strftime("%Y-%m")
+        month_narratives.setdefault(month_key, []).append(narrative)
+
+    # Keep only the most recent N months
+    sorted_months = sorted(month_narratives.keys(), reverse=True)[:months]
+    sorted_months.sort()  # chronological order
+
+    # Auto-detect top words if none provided
+    if words is None:
+        overall_counter = Counter()
+        for month_key in sorted_months:
+            for narrative in month_narratives[month_key]:
+                overall_counter.update(_tokenize(narrative))
+        words = [w for w, _ in overall_counter.most_common(8)]
+
+    if not words:
+        return []
+
+    # Count each target word per month
+    word_set = set(words)
+    month_word_counts = {m: Counter() for m in sorted_months}
+    for month_key in sorted_months:
+        for narrative in month_narratives[month_key]:
+            tokens = _tokenize(narrative)
+            for token in tokens:
+                if token in word_set:
+                    month_word_counts[month_key][token] += 1
+
+    # Build result
+    result = []
+    for word in words:
+        month_data = [
+            {"month": m, "count": month_word_counts[m].get(word, 0)}
+            for m in sorted_months
+        ]
+        result.append({"word": word, "months": month_data})
+
+    return result
+
+
+def get_word_comparison(company=None, compare_company=None, limit=15):
+    """
+    Compare top words between two companies, or between a company and
+    the overall average.
+
+    Returns a list of dicts:
+    [{"word": str, "company_count": int, "compare_count": int,
+      "difference": int}, ...]
+    """
+    # Word counts for the primary company
+    rows_a = _base_query(company).with_entities(Complaint.narrative).all()
+    counter_a = Counter()
+    for (narrative,) in rows_a:
+        counter_a.update(_tokenize(narrative))
+
+    # Word counts for the comparison target
+    rows_b = _base_query(compare_company).with_entities(Complaint.narrative).all()
+    counter_b = Counter()
+    for (narrative,) in rows_b:
+        counter_b.update(_tokenize(narrative))
+
+    # Collect the union of top words from both sides
+    top_words_a = {w for w, _ in counter_a.most_common(limit)}
+    top_words_b = {w for w, _ in counter_b.most_common(limit)}
+    all_words = top_words_a | top_words_b
+
+    result = []
+    for word in all_words:
+        company_count = counter_a.get(word, 0)
+        compare_count = counter_b.get(word, 0)
+        result.append({
+            "word": word,
+            "company_count": company_count,
+            "compare_count": compare_count,
+            "difference": company_count - compare_count,
+        })
+
+    # Sort by absolute difference descending, then limit
+    result.sort(key=lambda x: abs(x["difference"]), reverse=True)
+    return result[:limit]
+
+
+def get_trending_words(company=None, months=3):
+    """
+    Find words that are increasing or decreasing in frequency over the
+    last *months* months.  Compares the most recent month against the
+    average of the preceding months.
+
+    Returns a dict:
+    {"trending_up": [{"word": str, "current": int, "previous_avg": float,
+                      "change_pct": float}, ...],
+     "trending_down": [...]}
+    """
+    rows = (
+        _base_query(company)
+        .with_entities(Complaint.date_received, Complaint.narrative)
+        .filter(Complaint.date_received.isnot(None))
+        .order_by(Complaint.date_received.desc())
+        .all()
+    )
+
+    if not rows:
+        return {"trending_up": [], "trending_down": []}
+
+    # Group narratives by month
+    month_narratives = {}
+    for date_received, narrative in rows:
+        month_key = date_received.strftime("%Y-%m")
+        month_narratives.setdefault(month_key, []).append(narrative)
+
+    sorted_months = sorted(month_narratives.keys(), reverse=True)[:months]
+    if len(sorted_months) < 2:
+        return {"trending_up": [], "trending_down": []}
+
+    sorted_months.sort()  # chronological order
+    current_month = sorted_months[-1]
+    previous_months = sorted_months[:-1]
+
+    # Count words per month
+    month_counters = {}
+    for month_key in sorted_months:
+        counter = Counter()
+        for narrative in month_narratives[month_key]:
+            counter.update(_tokenize(narrative))
+        month_counters[month_key] = counter
+
+    current_counter = month_counters[current_month]
+
+    # Compute previous-month averages for every word seen in any month
+    all_words = set(current_counter.keys())
+    for m in previous_months:
+        all_words |= set(month_counters[m].keys())
+
+    trending_up = []
+    trending_down = []
+
+    for word in all_words:
+        current = current_counter.get(word, 0)
+        prev_counts = [month_counters[m].get(word, 0) for m in previous_months]
+        previous_avg = sum(prev_counts) / len(prev_counts) if prev_counts else 0
+
+        if previous_avg == 0 and current == 0:
+            continue
+
+        if previous_avg > 0:
+            change_pct = round(((current - previous_avg) / previous_avg) * 100, 2)
+        elif current > 0:
+            change_pct = 100.0
+        else:
+            change_pct = 0.0
+
+        entry = {
+            "word": word,
+            "current": current,
+            "previous_avg": round(previous_avg, 2),
+            "change_pct": change_pct,
+        }
+
+        if change_pct > 0:
+            trending_up.append(entry)
+        elif change_pct < 0:
+            trending_down.append(entry)
+
+    # Sort by magnitude of change
+    trending_up.sort(key=lambda x: x["change_pct"], reverse=True)
+    trending_down.sort(key=lambda x: x["change_pct"])
+
+    return {"trending_up": trending_up, "trending_down": trending_down}
