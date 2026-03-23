@@ -858,12 +858,38 @@ def create_app():
         return jsonify(result)
 
     # ── MEGA ENDPOINT: All dashboard data in one request ──────
+    # Persistent file-based cache survives server restarts
     _dashboard_cache = {}
+    _CACHE_DIR = os.path.join(data_dir, 'cache')
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+
+    def _load_file_cache(cache_key):
+        """Load from file cache if fresh (< 30 min)."""
+        import json as _json
+        fpath = os.path.join(_CACHE_DIR, f'dash_{cache_key}.json')
+        if os.path.exists(fpath):
+            age = datetime.utcnow().timestamp() - os.path.getmtime(fpath)
+            if age < 1800:  # 30 min
+                try:
+                    with open(fpath) as f:
+                        return _json.load(f)
+                except Exception:
+                    pass
+        return None
+
+    def _save_file_cache(cache_key, data):
+        import json as _json
+        fpath = os.path.join(_CACHE_DIR, f'dash_{cache_key}.json')
+        try:
+            with open(fpath, 'w') as f:
+                _json.dump(data, f)
+        except Exception:
+            pass
 
     @app.route('/api/dashboard-data')
     @login_required
     def api_dashboard_data():
-        """Returns ALL dashboard data in a single response. Cached 5 min per company."""
+        """Returns ALL dashboard data in a single response. File-cached 30 min."""
         import time as _t
         from services.analytics import (get_kpis, get_health_score, get_mom_changes,
             get_product_breakdown, get_issue_breakdown, get_response_breakdown,
@@ -873,12 +899,19 @@ def create_app():
 
         company = request.args.get('company') or ''
         months_back = request.args.get('months', type=int)
-        cache_key = f'{company}_{months_back}'
+        cache_key = f'{company}_{months_back}'.replace(' ', '_').replace(',', '')
 
+        # Check memory cache (5 min)
         if cache_key in _dashboard_cache and _t.time() - _dashboard_cache[cache_key][1] < 300:
             return jsonify(_dashboard_cache[cache_key][0])
 
-        # Build everything
+        # Check file cache (30 min) - survives server restarts
+        file_data = _load_file_cache(cache_key)
+        if file_data:
+            _dashboard_cache[cache_key] = (file_data, _t.time())
+            return jsonify(file_data)
+
+        # Build everything (slow path - only on cold start)
         kpis = get_kpis(company=company or None)
         health = get_health_score(company=company or None)
         mom = get_mom_changes(company=company or None)
@@ -953,6 +986,7 @@ def create_app():
         }
 
         _dashboard_cache[cache_key] = (result, _t.time())
+        _save_file_cache(cache_key, result)
         return jsonify(result)
 
     @app.route('/api/data-sources')
