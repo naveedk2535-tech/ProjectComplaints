@@ -749,20 +749,58 @@ def create_app():
     @app.route('/api/top5-comparison')
     @login_required
     def api_top5_comparison():
-        """Top 5 analysis across all extractable dimensions for a company."""
+        """Top 5 analysis with MoM comparison across all dimensions."""
         from services.analytics import get_product_breakdown, get_issue_breakdown, get_state_breakdown, get_submission_channels, get_response_breakdown
         from sqlalchemy import func, desc
+
         company = request.args.get('company')
+
+        # Get date ranges for current and prior month
+        today = date.today()
+        cur_start = today.replace(day=1)
+        prev_end = cur_start - timedelta(days=1)
+        prev_start = prev_end.replace(day=1)
+        prev2_end = prev_start - timedelta(days=1)
+        prev2_start = prev2_end.replace(day=1)
+
+        def _add_mom(items, field_name, key_name):
+            """Add prior month count and MoM change to each item."""
+            for item in items:
+                name = item.get(key_name) or item.get('name', '')
+                # Current month count
+                cq = Complaint.query.filter(
+                    Complaint.date_received >= prev_start,
+                    Complaint.date_received <= prev_end,
+                    getattr(Complaint, field_name) == name,
+                )
+                if company:
+                    cq = cq.filter(Complaint.company == company)
+                cur_count = cq.count()
+
+                # Prior month count
+                pq = Complaint.query.filter(
+                    Complaint.date_received >= prev2_start,
+                    Complaint.date_received <= prev2_end,
+                    getattr(Complaint, field_name) == name,
+                )
+                if company:
+                    pq = pq.filter(Complaint.company == company)
+                prev_count = pq.count()
+
+                item['cur_month'] = cur_count
+                item['prev_month'] = prev_count
+                item['mom_change'] = round((cur_count - prev_count) / prev_count * 100, 0) if prev_count else 0
+            return items
 
         result = {}
 
         # Top 5 products
-        products = get_product_breakdown(company=company)
-        result['products'] = products[:5]
+        products = get_product_breakdown(company=company)[:5]
+        result['products'] = _add_mom(products, 'product', 'product')
 
         # Top 5 issues
         issues = get_issue_breakdown(company=company, limit=5)
-        result['issues'] = issues
+        result['issues'] = _add_mom(issues, 'issue', 'issue')
 
         # Top 5 sub-products
         q = db.session.query(Complaint.sub_product, func.count().label('count'))
@@ -770,7 +808,7 @@ def create_app():
             q = q.filter(Complaint.company == company)
         q = q.filter(Complaint.sub_product.isnot(None), Complaint.sub_product != '')
         q = q.group_by(Complaint.sub_product).order_by(desc('count')).limit(5)
-        result['sub_products'] = [{'name': r.sub_product, 'count': r.count} for r in q.all()]
+        result['sub_products'] = _add_mom([{'name': r.sub_product, 'count': r.count} for r in q.all()], 'sub_product', 'name')
 
         # Top 5 sub-issues
         q = db.session.query(Complaint.sub_issue, func.count().label('count'))
@@ -778,21 +816,21 @@ def create_app():
             q = q.filter(Complaint.company == company)
         q = q.filter(Complaint.sub_issue.isnot(None), Complaint.sub_issue != '')
         q = q.group_by(Complaint.sub_issue).order_by(desc('count')).limit(5)
-        result['sub_issues'] = [{'name': r.sub_issue, 'count': r.count} for r in q.all()]
+        result['sub_issues'] = _add_mom([{'name': r.sub_issue, 'count': r.count} for r in q.all()], 'sub_issue', 'name')
 
         # Top 5 states
         states = get_state_breakdown(company=company, limit=5)
-        result['states'] = states
+        result['states'] = _add_mom(states, 'state', 'state')
 
         # Top 5 company responses
-        responses = get_response_breakdown(company=company)
-        result['responses'] = responses[:5]
+        responses = get_response_breakdown(company=company)[:5]
+        result['responses'] = _add_mom(responses, 'company_response', 'response')
 
         # Top 5 channels
-        channels = get_submission_channels(company=company)
-        result['channels'] = channels[:5]
+        channels = get_submission_channels(company=company)[:5]
+        result['channels'] = _add_mom(channels, 'submitted_via', 'channel')
 
-        # Top 5 tags
+        # Top 5 tags (skip MoM - too few data points)
         q = db.session.query(Complaint.tags, func.count().label('count'))
         if company:
             q = q.filter(Complaint.company == company)

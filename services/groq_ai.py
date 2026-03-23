@@ -1,15 +1,10 @@
 import os
 import hashlib
 import json
+import requests
 from datetime import datetime
-from groq import Groq
 
-
-def get_client():
-    api_key = os.getenv('GROQ_API_KEY')
-    if not api_key:
-        return None
-    return Groq(api_key=api_key)
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 def generate_hash(data):
@@ -19,8 +14,8 @@ def generate_hash(data):
 def generate_commentary(section, stats_data):
     from models.database import db, AICommentary
 
-    client = get_client()
-    if not client:
+    api_key = os.getenv('GROQ_API_KEY')
+    if not api_key:
         return {'error': 'No API key configured', 'content': None}
 
     data_hash = generate_hash(stats_data)
@@ -38,67 +33,71 @@ def generate_commentary(section, stats_data):
 Data:
 {json.dumps(stats_data, indent=2, default=str)}
 
-Write in a professional, analytical tone. Be specific with numbers. Format with clear paragraphs.""",
+Write in a professional, analytical tone. Be specific with numbers.""",
 
         'trend_analysis': f"""You are a financial data analyst. Analyze the following monthly complaint trend data and identify:
-1. Overall trend direction (increasing/decreasing)
-2. Seasonal patterns if any
-3. Notable spikes or dips and possible causes
+1. Overall trend direction
+2. Seasonal patterns
+3. Notable spikes or dips
 4. Month-over-month acceleration or deceleration
 
 Data:
 {json.dumps(stats_data, indent=2, default=str)}
 
-Be specific with dates and percentages. Format with bullet points.""",
+Be specific with dates and percentages. Use bullet points.""",
 
-        'anomaly_detection': f"""You are a risk analyst. Examine these complaint distribution breakdowns and flag any anomalies:
-- Products or categories with disproportionate complaint volumes
-- States with unusually high complaint rates
-- Issues growing faster than overall complaint growth
-- Any patterns that warrant immediate attention
+        'anomaly_detection': f"""You are a risk analyst. Examine these complaint distributions and flag anomalies:
+- Products with disproportionate volumes
+- States with unusually high rates
+- Issues growing faster than overall growth
 
 Data:
 {json.dumps(stats_data, indent=2, default=str)}
 
-Use a "RED FLAG" / "AMBER FLAG" / "WATCH" rating system. Be concise.""",
+Use RED FLAG / AMBER FLAG / WATCH ratings. Be concise.""",
 
         'sentiment_analysis': f"""You are a consumer sentiment analyst. Based on these complaint categories and resolution data, provide:
-1. Overall consumer satisfaction assessment
+1. Overall satisfaction assessment
 2. Most concerning product areas
-3. Resolution effectiveness analysis
-4. Key themes in consumer grievances
+3. Resolution effectiveness
+4. Key consumer grievances
 
 Data:
 {json.dumps(stats_data, indent=2, default=str)}
 
-Write in clear, accessible language with specific data points.""",
+Write in clear, accessible language.""",
 
-        'recommendations': f"""You are a banking compliance consultant. Based on this complaint analysis data, provide exactly 5 actionable recommendations to:
-1. Reduce complaint volume
-2. Improve resolution rates
-3. Increase monetary relief where appropriate
-4. Address the highest-volume complaint categories
-5. Improve overall bank health score
+        'recommendations': f"""You are a banking compliance consultant. Based on this data, provide 5 actionable recommendations to reduce complaints and improve resolution.
 
 Data:
 {json.dumps(stats_data, indent=2, default=str)}
 
-Number each recommendation. Include expected impact. Be specific and practical.""",
+Number each recommendation. Include expected impact.""",
     }
 
     prompt = prompts.get(section, prompts['executive_summary'])
 
     try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": "You are a professional financial complaints analyst providing insights for a dashboard. Be concise, data-driven, and actionable."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
-            max_tokens=1000,
+        response = requests.post(
+            GROQ_API_URL,
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+            },
+            json={
+                'model': 'llama-3.3-70b-versatile',
+                'messages': [
+                    {'role': 'system', 'content': 'You are a professional financial complaints analyst. Be concise, data-driven, and actionable.'},
+                    {'role': 'user', 'content': prompt},
+                ],
+                'temperature': 0.3,
+                'max_tokens': 800,
+            },
+            timeout=30,
         )
-        content = response.choices[0].message.content
+        response.raise_for_status()
+        data = response.json()
+        content = data['choices'][0]['message']['content']
 
         # Cache the result
         commentary = AICommentary(
