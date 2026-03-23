@@ -90,25 +90,24 @@
             <h5 style="font-weight:700;margin:0;"><i class="fas fa-trophy me-2"></i>Top 5 Analysis (All Dimensions)</h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
         </div><div class="collapse" id="s-top5" data-section="top5"><div class="p-3 pt-0"><div id="top5-box"></div></div></div></div>
 
-        <!-- Products & Issues -->
-        <div class="card-cw mb-3"><div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#s-prod">
-            <h5 style="font-weight:700;margin:0;"><i class="fas fa-boxes-stacked me-2"></i>Product & Issue Breakdown</h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
-        </div><div class="collapse" id="s-prod" data-section="products"><div class="p-3 pt-0"><div class="row g-3">
-            <div class="col-md-6"><div class="chart-container" style="height:340px;"><h6>Products</h6><div style="position:relative;height:280px;"><canvas id="productChart"></canvas></div></div></div>
-            <div class="col-md-6"><div class="chart-container" style="height:340px;"><h6>Top Issues</h6><div style="position:relative;height:280px;"><canvas id="issueChart"></canvas></div></div></div>
-            <div class="col-md-6"><div class="chart-container" style="height:340px;"><h6>Sub-Products</h6><div style="position:relative;height:280px;"><canvas id="subProductChart"></canvas></div></div></div>
-            <div class="col-md-6"><div class="chart-container" style="height:340px;"><h6>Issue Resolution Quality</h6><div style="position:relative;height:280px;"><canvas id="issueResChart"></canvas></div></div></div>
-        </div></div></div></div>
-
-        <!-- CLIENT-SPECIFIC: Word Intelligence (teal border) -->
+        <!-- CLIENT-SPECIFIC: Products, Issues, Words, Sentiment (teal border) -->
         <div class="card-cw mb-3" style="border-left:3px solid var(--accent-cyan);">
-            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#s-words">
-                <h5 style="font-weight:700;margin:0;"><i class="fas fa-comment-dots me-2" style="color:var(--accent-cyan);"></i>Word Intelligence & Sentiment
-                    <span style="font-size:0.7rem;color:var(--accent-cyan);font-weight:400;margin-left:8px;">Client Narrative Analysis</span>
+            <div class="p-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#s-client">
+                <h5 style="font-weight:700;margin:0;"><i class="fas fa-building me-2" style="color:var(--accent-cyan);"></i>Client Deep-Dive: Products, Issues, Words & Sentiment
                     <span class="badge-premium ms-2">PRO</span>
                 </h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
             </div>
-            <div class="collapse" id="s-words" data-section="words"><div class="p-3 pt-0">
+            <div class="collapse" id="s-client" data-section="client"><div class="p-3 pt-0">
+                <!-- Products & Issues -->
+                <h6 style="font-weight:700;color:var(--accent-cyan);margin-bottom:10px;"><i class="fas fa-boxes-stacked me-1"></i> Product & Issue Breakdown</h6>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6"><div class="chart-container" style="height:340px;"><h6>Products</h6><div style="position:relative;height:280px;"><canvas id="productChart"></canvas></div></div></div>
+                    <div class="col-md-6"><div class="chart-container" style="height:340px;"><h6>Top Issues</h6><div style="position:relative;height:280px;"><canvas id="issueChart"></canvas></div></div></div>
+                    <div class="col-md-6"><div class="chart-container" style="height:340px;"><h6>Sub-Products</h6><div style="position:relative;height:280px;"><canvas id="subProductChart"></canvas></div></div></div>
+                    <div class="col-md-6"><div class="chart-container" style="height:340px;"><h6>Issue Resolution Quality</h6><div style="position:relative;height:280px;"><canvas id="issueResChart"></canvas></div></div></div>
+                </div>
+                <!-- Word Intelligence -->
+                <h6 style="font-weight:700;color:var(--accent-cyan);margin-bottom:10px;"><i class="fas fa-comment-dots me-1"></i> Word Intelligence & Sentiment</h6>
                 <div class="row g-2 mb-3">
                     <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="s-score" style="font-size:1.4rem;">--</div><div class="kpi-label">Sentiment</div></div></div>
                     <div class="col-md-3"><div class="kpi-card text-center"><div class="kpi-value" id="s-neg" style="font-size:1.1rem;color:var(--accent-red);">--</div><div class="kpi-label">Negative</div></div></div>
@@ -326,16 +325,16 @@ const SL={
         const secs=[{t:'Products',d:d.products,k:'product'},{t:'Issues',d:d.issues,k:'issue'},{t:'Sub-Products',d:d.sub_products,k:'name'},{t:'Sub-Issues',d:d.sub_issues,k:'name'},{t:'States',d:d.states,k:'state'},{t:'Channels',d:d.channels,k:'channel'},{t:'Tags',d:d.tags,k:'name'},{t:'Public Responses',d:d.public_responses,k:'name'},{t:'Resolution',d:d.responses,k:'response'}];
         document.getElementById('top5-box').innerHTML='<div class="t5g">'+secs.map(s=>{const items=(s.d||[]).slice(0,5);if(!items.length)return '';const total=items.reduce((a,b)=>a+(b.count||0),0);return `<div class="t5c"><h6>${s.t}</h6>${items.map((it,i)=>{const nm=it[s.k]||it.name||'?';const pct=total?(it.count/total*100).toFixed(0):'0';return `<div class="t5i"><span style="color:var(--text-secondary);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${i+1}. ${nm.substring(0,35)}</span><span style="font-weight:700;">${fmt(it.count)} <span style="color:var(--text-muted);font-size:0.7rem;">(${pct}%)</span></span></div>`;}).join('')}</div>`;}).join('')+'</div>';
     },
-    products:async()=>{
+    client:async()=>{
+        // Products & Issues
         const[pr,ir,spr,irm]=await Promise.all([fetch('/api/product-breakdown'+qs()),fetch('/api/issue-breakdown'+qs()),fetch('/api/sub-product-breakdown'+qs()),fetch('/api/issue-resolution-mix'+qs())]);
         const products=await pr.json(),issues=await ir.json(),subp=await spr.json(),irmix=await irm.json();const pt=products.reduce((s,x)=>s+x.count,0);
-        D('product');ch.product=new Chart(document.getElementById('productChart').getContext('2d'),{type:'bar',data:{labels:products.map(x=>`${x.product} (${(x.count/pt*100).toFixed(0)}%)`),datasets:[{data:products.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
-        D('issue');ch.issue=new Chart(document.getElementById('issueChart').getContext('2d'),{type:'bar',data:{labels:issues.map(x=>x.issue.length>35?x.issue.substring(0,35)+'...':x.issue),datasets:[{data:issues.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
-        const spt=subp.reduce((s,x)=>s+x.count,0);D('subProduct');ch.subProduct=new Chart(document.getElementById('subProductChart').getContext('2d'),{type:'bar',data:{labels:subp.slice(0,10).map(x=>`${x.sub_product.substring(0,25)} (${(x.count/spt*100).toFixed(0)}%)`),datasets:[{data:subp.slice(0,10).map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}}}}});
+        D('product');ch.product=new Chart(document.getElementById('productChart').getContext('2d'),{type:'bar',data:{labels:products.map(x=>`${x.product} (${(x.count/pt*100).toFixed(0)}%)`),datasets:[{data:products.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
+        D('issue');ch.issue=new Chart(document.getElementById('issueChart').getContext('2d'),{type:'bar',data:{labels:issues.map(x=>x.issue.length>35?x.issue.substring(0,35)+'...':x.issue),datasets:[{data:issues.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
+        const spt=subp.reduce((s,x)=>s+x.count,0);D('subProduct');ch.subProduct=new Chart(document.getElementById('subProductChart').getContext('2d'),{type:'bar',data:{labels:subp.slice(0,10).map(x=>`${x.sub_product.substring(0,25)} (${(x.count/spt*100).toFixed(0)}%)`),datasets:[{data:subp.slice(0,10).map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}}}}});
         const irIs=Object.keys(irmix).slice(0,10),resps=['Closed with explanation','Closed with monetary relief','Closed with non-monetary relief','In progress'];
-        D('issueRes');ch.issueRes=new Chart(document.getElementById('issueResChart').getContext('2d'),{type:'bar',data:{labels:irIs.map(i=>i.length>28?i.substring(0,28)+'...':i),datasets:resps.map(r=>({label:r,data:irIs.map(i=>irmix[i][r]||0),backgroundColor:(RC[r]||'#64748b')+'99'}))},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:7}}}},scales:{x:{stacked:true,grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:7}}}}}});
-    },
-    words:async()=>{
+        D('issueRes');ch.issueRes=new Chart(document.getElementById('issueResChart').getContext('2d'),{type:'bar',data:{labels:irIs.map(i=>i.length>28?i.substring(0,28)+'...':i),datasets:resps.map(r=>({label:r,data:irIs.map(i=>irmix[i][r]||0),backgroundColor:(RC[r]||'#64748b')+'99'}))},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:7}}}},scales:{x:{stacked:true,grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:7}}}}}});
+        // Word Intelligence (part of same section)
         const[wr,sr,tr,twr,nsr]=await Promise.all([fetch('/api/text/top-words'+qs()),fetch('/api/text/sentiment'+qs()),fetch('/api/text/themes'+qs()),fetch('/api/text/word-trends'+qs()),fetch('/api/text/narrative-stats'+qs())]);
         const words=await wr.json(),sent=await sr.json(),themes=await tr.json();let wt=[],ns={};try{wt=await twr.json();}catch(e){}try{ns=await nsr.json();}catch(e){}
         const sc=sent.sentiment_score||0;document.getElementById('s-score').textContent=sc>0?'+'+sc.toFixed(2):sc.toFixed(2);document.getElementById('s-score').style.color=sc>0?'var(--accent-green)':'var(--accent-red)';
