@@ -12,7 +12,7 @@
             </select>
             <div class="position-relative" style="width:210px;">
                 <div class="form-control-cw d-flex align-items-center justify-content-between" style="cursor:pointer;font-size:0.85rem;padding:0.45rem 0.8rem;" onclick="toggleEl('cmp-dd')">
-                    <span id="cmp-label" style="color:var(--text-muted);">Compare...</span>
+                    <span id="cmp-label" style="color:var(--text-muted);">Compare (up to 4)...</span>
                     <i class="fas fa-caret-down" style="color:var(--text-muted);"></i>
                 </div>
                 <div id="cmp-dd" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:100;background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;max-height:220px;overflow-y:auto;margin-top:4px;padding:4px;" class="shadow">
@@ -82,29 +82,16 @@
         </div>
     </div><!-- end industry section -->
 
-    <!-- ════ CFPB PEER COMPARISON & VOLUME ANALYSIS ════ -->
+    <!-- ════ INDUSTRY: TOP COMPLAINT DRIVERS & PEER RATES ════ -->
     <div style="border-left:3px solid var(--accent-amber);padding-left:12px;margin-bottom:1.5rem;">
         <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--accent-amber);font-weight:700;margin-bottom:8px;">
-            <i class="fas fa-chart-bar me-1"></i> CFPB Peer Comparison & Volume Analysis
+            <i class="fas fa-chart-bar me-1"></i> <span id="industry-section-label">Industry Complaint Analysis</span>
         </div>
 
-        <!-- Row 1: Peer YoY Comparison + Top Complaint Drivers -->
         <div class="row g-3 mb-3">
             <div class="col-md-7"><div class="chart-container" style="height:370px;">
-                <h5 style="font-size:0.95rem;"><i class="fas fa-exchange-alt me-2"></i>Peer Volume Comparison YoY <span id="pva-yoy-label" style="font-size:0.7rem;color:var(--accent-amber);font-weight:400;"></span></h5>
-                <div style="position:relative;height:310px;"><canvas id="peerYoyChart"></canvas></div>
-            </div></div>
-            <div class="col-md-5"><div class="chart-container" style="height:370px;">
                 <h5 style="font-size:0.95rem;"><i class="fas fa-exclamation-triangle me-2"></i>Top Complaint Drivers <span id="pva-drivers-label" style="font-size:0.7rem;color:var(--accent-red);font-weight:400;"></span></h5>
                 <div style="position:relative;height:310px;"><canvas id="driversChart"></canvas></div>
-            </div></div>
-        </div>
-
-        <!-- Row 2: Volume Growth Trend + Peer Complaint Rates -->
-        <div class="row g-3 mb-3">
-            <div class="col-md-7"><div class="chart-container" style="height:370px;">
-                <h5 style="font-size:0.95rem;"><i class="fas fa-chart-line me-2"></i>CFPB Volume Growth Trend <span id="pva-growth-label" style="font-size:0.7rem;color:var(--accent-green);font-weight:400;"></span></h5>
-                <div style="position:relative;height:310px;"><canvas id="volumeGrowthChart"></canvas></div>
             </div></div>
             <div class="col-md-5"><div class="chart-container" style="height:370px;">
                 <h5 style="font-size:0.95rem;"><i class="fas fa-university me-2"></i>Peer Complaint Rates (12M) <span id="pva-rates-label" style="font-size:0.7rem;color:var(--accent-cyan);font-weight:400;"></span></h5>
@@ -129,6 +116,18 @@
                 </h5><i class="fas fa-chevron-down" style="color:var(--text-muted);"></i>
             </div>
             <div class="collapse" id="s-client" data-section="client"><div class="p-3 pt-0">
+                <!-- Peer YoY Comparison + Volume Growth (client-centric) -->
+                <h6 style="font-weight:700;color:var(--accent-cyan);margin-bottom:10px;"><i class="fas fa-exchange-alt me-1"></i> CFPB Peer Comparison & Volume Growth</h6>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6"><div class="chart-container" style="height:370px;">
+                        <h6>Peer Volume Comparison YoY <span id="pva-yoy-label" style="font-size:0.7rem;color:var(--accent-amber);font-weight:400;"></span></h6>
+                        <div style="position:relative;height:310px;"><canvas id="peerYoyChart"></canvas></div>
+                    </div></div>
+                    <div class="col-md-6"><div class="chart-container" style="height:370px;">
+                        <h6>CFPB Volume Growth Trend <span id="pva-growth-label" style="font-size:0.7rem;color:var(--accent-green);font-weight:400;"></span></h6>
+                        <div style="position:relative;height:310px;"><canvas id="volumeGrowthChart"></canvas></div>
+                    </div></div>
+                </div>
                 <!-- Products & Issues -->
                 <h6 style="font-weight:700;color:var(--accent-cyan);margin-bottom:10px;"><i class="fas fa-boxes-stacked me-1"></i> Product & Issue Breakdown</h6>
                 <div class="row g-3 mb-4">
@@ -240,8 +239,12 @@ async function loadCompanies(){
         o.appendChild(div);
     });
 }
-function tglCmp(cb){if(cb.checked)selCmp.add(cb.value);else selCmp.delete(cb.value);
-    document.getElementById('cmp-label').textContent=selCmp.size?selCmp.size+' compared':'Compare...';
+function tglCmp(cb){
+    if(cb.checked){
+        if(selCmp.size>=4){cb.checked=false;return;}// cap at 4
+        selCmp.add(cb.value);
+    }else selCmp.delete(cb.value);
+    document.getElementById('cmp-label').textContent=selCmp.size?selCmp.size+'/4 compared':'Compare (up to 4)...';
     document.getElementById('cmp-label').style.color=selCmp.size?'var(--text-primary)':'var(--text-muted)';
     // Re-render trend with comparison lines + response comparison
     if(_dashData) renderTrend(_dashData.monthly_volume);
@@ -298,15 +301,26 @@ function renderClient(d){
     D('issueRes');ch.issueRes=new Chart(document.getElementById('issueResChart').getContext('2d'),{type:'bar',data:{labels:irIs.map(i=>i.length>25?i.substring(0,25)+'...':i),datasets:resps.map(r=>({label:r,data:irIs.map((i,idx)=>{const t=irTotals[idx];return t?Math.round((irmix[i][r]||0)/t*100):0;}),backgroundColor:(RC[r]||'#64748b')+'99'}))},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:7}}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x}%`}}},scales:{x:{stacked:true,max:100,grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3',callback:v=>v+'%'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:7}}}}}});
 }
 
-// ── CFPB Peer Comparison & Volume Analysis Charts ──
-async function loadPeerVolumeAnalysis(){
+// ── Industry-level: Drivers + Peer Rates ──
+async function loadIndustryAnalysis(){
     try{
         const r=await fetch('/api/peer-volume-analysis'+qs());const d=await r.json();
-        renderPeerYoy(d.peer_yoy);
+        _pvaData=d; // cache for client section reuse
         renderDrivers(d.drivers);
-        renderVolumeGrowth(d.volume_growth);
         renderPeerRates(d.peer_rates);
-    }catch(e){console.error('PVA load error:',e);}
+        document.getElementById('industry-section-label').textContent=C()?C()+' Complaint Analysis':'Industry Complaint Analysis';
+    }catch(e){console.error('Industry analysis error:',e);}
+}
+let _pvaData=null;
+
+// ── Client-centric: Peer YoY + Volume Growth (loaded inside client section) ──
+async function loadClientPeerCharts(){
+    try{
+        let d=_pvaData;
+        if(!d){const r=await fetch('/api/peer-volume-analysis'+qs());d=await r.json();_pvaData=d;}
+        renderPeerYoy(d.peer_yoy);
+        renderVolumeGrowth(d.volume_growth);
+    }catch(e){console.error('Client peer charts error:',e);}
 }
 
 function renderPeerYoy(data){
@@ -367,7 +381,7 @@ function renderVolumeGrowth(data){
         options:{responsive:true,maintainAspectRatio:false,plugins:{
             legend:{labels:{color:'#8b8fa3',font:{size:9}}},
             tooltip:{callbacks:{label:ctx=>{
-                if(ctx.dataset.yAxisID==='y1')return 'YoY: '+(ctx.parsed.y!=null?ctx.parsed.y+'%':'N/A');
+                if(ctx.dataset.yAxisID==='y1'){const m=months[ctx.dataIndex];return 'YoY: '+(ctx.parsed.y!=null?ctx.parsed.y+'%'+(m.estimated?' (est)':''):'N/A');}
                 return 'Volume: '+fmt(ctx.parsed.y);
             }}}
         },scales:{
@@ -521,6 +535,8 @@ const SL={
         }).join('')+'</div>';
     },
     client:async()=>{
+        // Peer YoY + Volume Growth (client-centric)
+        loadClientPeerCharts();
         // Products & Issues
         const[pr,ir,spr,irm]=await Promise.all([fetch('/api/product-breakdown'+qs()),fetch('/api/issue-breakdown'+qs()),fetch('/api/sub-product-breakdown'+qs()),fetch('/api/issue-resolution-mix'+qs())]);
         const products=await pr.json(),issues=await ir.json(),subp=await spr.json(),irmix=await irm.json();const pt=products.reduce((s,x)=>s+x.count,0);
@@ -583,6 +599,7 @@ document.querySelectorAll('.collapse[data-section]').forEach(el=>{
 let _dashData = null; // Cached dashboard data
 
 async function loadAll(){
+    _pvaData=null; // reset cached peer analysis when filters change
     // ONE request for all core dashboard data
     const r = await fetch('/api/dashboard-data'+qs());
     _dashData = await r.json();
@@ -621,8 +638,8 @@ async function loadAll(){
     // Render Products/Issues/SubProducts from cached data
     renderClient(d);
 
-    // Load peer volume analysis charts
-    loadPeerVolumeAnalysis();
+    // Load industry-level charts (drivers + peer rates)
+    loadIndustryAnalysis();
 
     // Preload remaining sections
     ['top5','geo','banks','sources'].forEach((s,i)=>{

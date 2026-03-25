@@ -555,17 +555,18 @@ def get_peer_comparison(company, peers):
     return results
 
 
-def get_peer_yoy_comparison(company=None, limit=6):
-    """YoY complaint volume comparison for a company and its top peers.
-    Returns current year vs prior year volumes per company."""
-    from models.database import MonthlyVolume
+def _last_complete_month():
+    """Return the last fully-completed month key (e.g. '2026-02' if today is March 2026).
+    Current month data is always partial and should be excluded from analysis."""
     today = datetime.utcnow().date()
-    cur_year = today.year
-    prev_year = cur_year - 1
+    first_of_current = today.replace(day=1)
+    last_complete = first_of_current - timedelta(days=1)
+    return f'{last_complete.year}-{last_complete.month:02d}'
 
-    # Determine which companies to compare
+
+def _get_peer_company_list(company, limit):
+    """Shared helper: get target company + its peers based on product overlap."""
     if company:
-        # Get peers sharing same products
         target_products = db.session.query(Complaint.product).filter(
             Complaint.company == company
         ).distinct().all()
@@ -577,15 +578,26 @@ def get_peer_yoy_comparison(company=None, limit=6):
                 Complaint.company != company,
                 Complaint.product.in_(product_set)
             ).group_by(Complaint.company).order_by(desc('count')).limit(limit - 1)
-            companies = [company] + [r.company for r in peer_q.all()]
-        else:
-            companies = [company]
+            return [company] + [r.company for r in peer_q.all()]
+        return [company]
     else:
-        # Top companies by volume
         top_q = db.session.query(
             Complaint.company, func.count().label('count')
         ).group_by(Complaint.company).order_by(desc('count')).limit(limit)
-        companies = [r.company for r in top_q.all()]
+        return [r.company for r in top_q.all()]
+
+
+def get_peer_yoy_comparison(company=None, limit=6):
+    """YoY complaint volume comparison for a company and its top peers.
+    Returns current year vs prior year volumes per company.
+    Excludes the current (partial) month."""
+    from models.database import MonthlyVolume
+    today = datetime.utcnow().date()
+    cur_year = today.year
+    prev_year = cur_year - 1
+    max_month = _last_complete_month()
+
+    companies = _get_peer_company_list(company, limit)
 
     results = []
     for comp in companies:
@@ -593,7 +605,8 @@ def get_peer_yoy_comparison(company=None, limit=6):
             func.sum(MonthlyVolume.total_complaints)
         ).filter(
             MonthlyVolume.company == comp,
-            MonthlyVolume.month.like(f'{cur_year}-%')
+            MonthlyVolume.month.like(f'{cur_year}-%'),
+            MonthlyVolume.month <= max_month
         ).scalar() or 0
 
         prev_vol = db.session.query(
@@ -620,13 +633,17 @@ def get_peer_yoy_comparison(company=None, limit=6):
 
 
 def get_complaint_drivers_yoy(company=None, limit=8):
-    """Top complaint issues with YoY volume changes and share %."""
+    """Top complaint issues with YoY volume changes and share %.
+    Excludes current (partial) month."""
     today = datetime.utcnow().date()
+    # End date = last day of last complete month
+    first_of_current = today.replace(day=1)
+    cur_year_end = first_of_current - timedelta(days=1)
     cur_year_start = today.replace(month=1, day=1)
     prev_year_start = cur_year_start.replace(year=cur_year_start.year - 1)
     prev_year_end = cur_year_start - timedelta(days=1)
 
-    # Current year top issues
+    # Current year top issues (up to last complete month)
     q = db.session.query(
         Complaint.issue, func.count().label('count')
     )
@@ -634,6 +651,7 @@ def get_complaint_drivers_yoy(company=None, limit=8):
         q = q.filter(Complaint.company == company)
     q = q.filter(
         Complaint.date_received >= cur_year_start,
+        Complaint.date_received <= cur_year_end,
         Complaint.issue.isnot(None), Complaint.issue != ''
     ).group_by(Complaint.issue).order_by(desc('count')).limit(limit)
     cur_issues = {r.issue: r.count for r in q.all()}
@@ -670,8 +688,10 @@ def get_complaint_drivers_yoy(company=None, limit=8):
 
 
 def get_volume_growth_trend(company=None, months=24):
-    """Monthly volumes with YoY % growth rate for each month."""
+    """Monthly volumes with YoY % growth rate for each month.
+    Excludes the current (partial) month."""
     from models.database import MonthlyVolume
+    max_month = _last_complete_month()
 
     vol_q = db.session.query(
         MonthlyVolume.month,
@@ -679,6 +699,7 @@ def get_volume_growth_trend(company=None, months=24):
     )
     if company:
         vol_q = vol_q.filter(MonthlyVolume.company == company)
+    vol_q = vol_q.filter(MonthlyVolume.month <= max_month)
     vol_q = vol_q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
     all_vols = {r.month: r.total for r in vol_q.all()}
 
@@ -687,21 +708,53 @@ def get_volume_growth_trend(company=None, months=24):
     if months and len(sorted_months) > months:
         sorted_months = sorted_months[-months:]
 
+    # Also fetch ALL months (not just window) for prior-year lookups
+    all_q = db.session.query(
+        MonthlyVolume.month,
+        func.sum(MonthlyVolume.total_complaints).label('total')
+    )
+    if company:
+        all_q = all_q.filter(MonthlyVolume.company == company)
+    all_q = all_q.filter(MonthlyVolume.month <= max_month)
+    all_q = all_q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
+    full_vols = {r.month: r.total for r in all_q.all()}
+
     results = []
     for m in sorted_months:
         vol = all_vols[m]
         # YoY: compare to same month prior year
         year, mo = m.split('-')
         prev_month_key = f'{int(year) - 1}-{mo}'
-        prev_vol = all_vols.get(prev_month_key, 0)
+        prev_vol = full_vols.get(prev_month_key)
+        estimated = False
+        # If prior year month missing, interpolate from neighbors
+        if prev_vol is None:
+            prev_y = int(year) - 1
+            prev_mo = int(mo)
+            before_key = f'{prev_y}-{prev_mo - 1:02d}' if prev_mo > 1 else f'{prev_y - 1}-12'
+            after_key = f'{prev_y}-{prev_mo + 1:02d}' if prev_mo < 12 else f'{prev_y + 1}-01'
+            before_vol = full_vols.get(before_key)
+            after_vol = full_vols.get(after_key)
+            if before_vol and after_vol:
+                prev_vol = int((before_vol + after_vol) / 2)
+                estimated = True
+            elif before_vol:
+                prev_vol = before_vol
+                estimated = True
+            elif after_vol:
+                prev_vol = after_vol
+                estimated = True
         yoy_pct = round((vol - prev_vol) / prev_vol * 100, 1) if prev_vol else None
 
-        results.append({
+        entry = {
             'month': m,
             'volume': vol,
-            'prior_year_volume': prev_vol,
+            'prior_year_volume': prev_vol or 0,
             'yoy_pct': yoy_pct,
-        })
+        }
+        if estimated:
+            entry['estimated'] = True
+        results.append(entry)
 
     # Calculate overall YoY: sum of last 12 months vs prior 12
     recent_12 = sorted_months[-12:] if len(sorted_months) >= 12 else sorted_months
@@ -723,33 +776,16 @@ def get_volume_growth_trend(company=None, months=24):
 
 
 def get_peer_complaint_rates(company=None, limit=8):
-    """Complaint volume per peer company with rates and rankings."""
+    """Complaint volume per peer company with rates and rankings.
+    Uses last 12 complete months (excludes current partial month)."""
     from models.database import MonthlyVolume
-    today = datetime.utcnow().date()
-    # Last 12 months
-    twelve_ago = (today.replace(day=1) - timedelta(days=365)).replace(day=1)
-    twelve_ago_key = f'{twelve_ago.year}-{twelve_ago.month:02d}'
+    max_month = _last_complete_month()
+    # 12 months back from the last complete month
+    year, mo = max_month.split('-')
+    twelve_back = datetime(int(year), int(mo), 1) - timedelta(days=365)
+    twelve_ago_key = f'{twelve_back.year}-{twelve_back.month:02d}'
 
-    # Get companies to compare
-    if company:
-        target_products = db.session.query(Complaint.product).filter(
-            Complaint.company == company
-        ).distinct().all()
-        product_set = {r.product for r in target_products}
-        if product_set:
-            peer_q = db.session.query(
-                Complaint.company, func.count().label('count')
-            ).filter(
-                Complaint.product.in_(product_set)
-            ).group_by(Complaint.company).order_by(desc('count')).limit(limit)
-            companies = [r.company for r in peer_q.all()]
-        else:
-            companies = [company]
-    else:
-        top_q = db.session.query(
-            Complaint.company, func.count().label('count')
-        ).group_by(Complaint.company).order_by(desc('count')).limit(limit)
-        companies = [r.company for r in top_q.all()]
+    companies = _get_peer_company_list(company, limit)
 
     results = []
     for comp in companies:
@@ -757,10 +793,10 @@ def get_peer_complaint_rates(company=None, limit=8):
             func.sum(MonthlyVolume.total_complaints)
         ).filter(
             MonthlyVolume.company == comp,
-            MonthlyVolume.month >= twelve_ago_key
+            MonthlyVolume.month >= twelve_ago_key,
+            MonthlyVolume.month <= max_month
         ).scalar() or 0
 
-        # Resolution rate
         kpis = get_kpis(company=comp)
 
         results.append({

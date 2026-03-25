@@ -931,10 +931,13 @@ def create_app():
         health = get_health_score(company=company or None)
         mom = get_mom_changes(company=company or None)
 
-        # Monthly volume
+        # Monthly volume - exclude current (partial) month
+        today = date.today()
+        cur_m = f"{today.year}-{today.month:02d}"
         vol_q = db.session.query(MonthlyVolume.month, db.func.sum(MonthlyVolume.total_complaints).label('total'))
         if company:
             vol_q = vol_q.filter(MonthlyVolume.company == company)
+        vol_q = vol_q.filter(MonthlyVolume.month < cur_m)
         vol_q = vol_q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
         vol_raw = [{'month': r.month, 'count': r.total} for r in vol_q.all()]
         # Normalize outliers
@@ -945,17 +948,6 @@ def create_app():
                     vol_raw[i]['count'] = int(avg_n)
         if months_back and len(vol_raw) > months_back:
             vol_raw = vol_raw[-months_back:]
-        # Forecast
-        if vol_raw:
-            today = date.today()
-            cur_m = f"{today.year}-{today.month:02d}"
-            if vol_raw[-1]['month'] == cur_m:
-                vol_raw[-1]['partial'] = True
-                full = [r for r in vol_raw[:-1]]
-                avg3 = sum(m['count'] for m in full[-3:]) / max(len(full[-3:]), 1) if full else vol_raw[-1]['count']
-                ext = int(vol_raw[-1]['count'] * 31 / max(today.day, 1))
-                vol_raw[-1]['forecast'] = int(avg3 * 0.7 + ext * 0.3)
-                vol_raw[-1]['actual_so_far'] = vol_raw[-1]['count']
 
         responses = get_response_breakdown(company=company or None)
         products = get_product_breakdown(company=company or None)
