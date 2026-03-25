@@ -555,6 +555,227 @@ def get_peer_comparison(company, peers):
     return results
 
 
+def get_peer_yoy_comparison(company=None, limit=6):
+    """YoY complaint volume comparison for a company and its top peers.
+    Returns current year vs prior year volumes per company."""
+    from models.database import MonthlyVolume
+    today = datetime.utcnow().date()
+    cur_year = today.year
+    prev_year = cur_year - 1
+
+    # Determine which companies to compare
+    if company:
+        # Get peers sharing same products
+        target_products = db.session.query(Complaint.product).filter(
+            Complaint.company == company
+        ).distinct().all()
+        product_set = {r.product for r in target_products}
+        if product_set:
+            peer_q = db.session.query(
+                Complaint.company, func.count().label('count')
+            ).filter(
+                Complaint.company != company,
+                Complaint.product.in_(product_set)
+            ).group_by(Complaint.company).order_by(desc('count')).limit(limit - 1)
+            companies = [company] + [r.company for r in peer_q.all()]
+        else:
+            companies = [company]
+    else:
+        # Top companies by volume
+        top_q = db.session.query(
+            Complaint.company, func.count().label('count')
+        ).group_by(Complaint.company).order_by(desc('count')).limit(limit)
+        companies = [r.company for r in top_q.all()]
+
+    results = []
+    for comp in companies:
+        cur_vol = db.session.query(
+            func.sum(MonthlyVolume.total_complaints)
+        ).filter(
+            MonthlyVolume.company == comp,
+            MonthlyVolume.month.like(f'{cur_year}-%')
+        ).scalar() or 0
+
+        prev_vol = db.session.query(
+            func.sum(MonthlyVolume.total_complaints)
+        ).filter(
+            MonthlyVolume.company == comp,
+            MonthlyVolume.month.like(f'{prev_year}-%')
+        ).scalar() or 0
+
+        yoy_change = round((cur_vol - prev_vol) / prev_vol * 100, 1) if prev_vol else 0
+
+        results.append({
+            'company': comp,
+            'current_year': cur_vol,
+            'prior_year': prev_vol,
+            'yoy_change': yoy_change,
+        })
+
+    return {
+        'companies': results,
+        'current_year_label': str(cur_year),
+        'prior_year_label': str(prev_year),
+    }
+
+
+def get_complaint_drivers_yoy(company=None, limit=8):
+    """Top complaint issues with YoY volume changes and share %."""
+    today = datetime.utcnow().date()
+    cur_year_start = today.replace(month=1, day=1)
+    prev_year_start = cur_year_start.replace(year=cur_year_start.year - 1)
+    prev_year_end = cur_year_start - timedelta(days=1)
+
+    # Current year top issues
+    q = db.session.query(
+        Complaint.issue, func.count().label('count')
+    )
+    if company:
+        q = q.filter(Complaint.company == company)
+    q = q.filter(
+        Complaint.date_received >= cur_year_start,
+        Complaint.issue.isnot(None), Complaint.issue != ''
+    ).group_by(Complaint.issue).order_by(desc('count')).limit(limit)
+    cur_issues = {r.issue: r.count for r in q.all()}
+
+    total_cur = sum(cur_issues.values())
+
+    # Previous year counts for those same issues
+    issue_names = list(cur_issues.keys())
+    prev_q = db.session.query(
+        Complaint.issue, func.count().label('count')
+    )
+    if company:
+        prev_q = prev_q.filter(Complaint.company == company)
+    prev_q = prev_q.filter(
+        Complaint.date_received >= prev_year_start,
+        Complaint.date_received <= prev_year_end,
+        Complaint.issue.in_(issue_names)
+    ).group_by(Complaint.issue)
+    prev_issues = {r.issue: r.count for r in prev_q.all()}
+
+    results = []
+    for issue, count in cur_issues.items():
+        prev = prev_issues.get(issue, 0)
+        yoy = round((count - prev) / prev * 100, 1) if prev else 0
+        results.append({
+            'issue': issue,
+            'count': count,
+            'share_pct': round(count / total_cur * 100, 1) if total_cur else 0,
+            'prior_year': prev,
+            'yoy_change': yoy,
+        })
+
+    return results
+
+
+def get_volume_growth_trend(company=None, months=24):
+    """Monthly volumes with YoY % growth rate for each month."""
+    from models.database import MonthlyVolume
+
+    vol_q = db.session.query(
+        MonthlyVolume.month,
+        func.sum(MonthlyVolume.total_complaints).label('total')
+    )
+    if company:
+        vol_q = vol_q.filter(MonthlyVolume.company == company)
+    vol_q = vol_q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
+    all_vols = {r.month: r.total for r in vol_q.all()}
+
+    # Get the last N months
+    sorted_months = sorted(all_vols.keys())
+    if months and len(sorted_months) > months:
+        sorted_months = sorted_months[-months:]
+
+    results = []
+    for m in sorted_months:
+        vol = all_vols[m]
+        # YoY: compare to same month prior year
+        year, mo = m.split('-')
+        prev_month_key = f'{int(year) - 1}-{mo}'
+        prev_vol = all_vols.get(prev_month_key, 0)
+        yoy_pct = round((vol - prev_vol) / prev_vol * 100, 1) if prev_vol else None
+
+        results.append({
+            'month': m,
+            'volume': vol,
+            'prior_year_volume': prev_vol,
+            'yoy_pct': yoy_pct,
+        })
+
+    # Calculate overall YoY: sum of last 12 months vs prior 12
+    recent_12 = sorted_months[-12:] if len(sorted_months) >= 12 else sorted_months
+    prior_12 = []
+    for m in recent_12:
+        year, mo = m.split('-')
+        prior_12.append(f'{int(year) - 1}-{mo}')
+
+    total_recent = sum(all_vols.get(m, 0) for m in recent_12)
+    total_prior = sum(all_vols.get(m, 0) for m in prior_12)
+    overall_yoy = round((total_recent - total_prior) / total_prior * 100, 1) if total_prior else 0
+
+    return {
+        'months': results,
+        'overall_yoy_pct': overall_yoy,
+        'total_recent_12m': total_recent,
+        'total_prior_12m': total_prior,
+    }
+
+
+def get_peer_complaint_rates(company=None, limit=8):
+    """Complaint volume per peer company with rates and rankings."""
+    from models.database import MonthlyVolume
+    today = datetime.utcnow().date()
+    # Last 12 months
+    twelve_ago = (today.replace(day=1) - timedelta(days=365)).replace(day=1)
+    twelve_ago_key = f'{twelve_ago.year}-{twelve_ago.month:02d}'
+
+    # Get companies to compare
+    if company:
+        target_products = db.session.query(Complaint.product).filter(
+            Complaint.company == company
+        ).distinct().all()
+        product_set = {r.product for r in target_products}
+        if product_set:
+            peer_q = db.session.query(
+                Complaint.company, func.count().label('count')
+            ).filter(
+                Complaint.product.in_(product_set)
+            ).group_by(Complaint.company).order_by(desc('count')).limit(limit)
+            companies = [r.company for r in peer_q.all()]
+        else:
+            companies = [company]
+    else:
+        top_q = db.session.query(
+            Complaint.company, func.count().label('count')
+        ).group_by(Complaint.company).order_by(desc('count')).limit(limit)
+        companies = [r.company for r in top_q.all()]
+
+    results = []
+    for comp in companies:
+        vol_12m = db.session.query(
+            func.sum(MonthlyVolume.total_complaints)
+        ).filter(
+            MonthlyVolume.company == comp,
+            MonthlyVolume.month >= twelve_ago_key
+        ).scalar() or 0
+
+        # Resolution rate
+        kpis = get_kpis(company=comp)
+
+        results.append({
+            'company': comp,
+            'volume_12m': vol_12m,
+            'resolution_rate': kpis['resolution_rate'],
+            'monetary_relief_rate': kpis['monetary_relief_rate'],
+            'timely_rate': kpis['timely_rate'],
+            'is_target': comp == company,
+        })
+
+    results.sort(key=lambda x: -x['volume_12m'])
+    return results
+
+
 def get_issue_sub_issue_tree(company=None, limit=10):
     """Top issues with their sub-issues nested."""
     # Get top issues

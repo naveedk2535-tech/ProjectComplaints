@@ -82,6 +82,37 @@
         </div>
     </div><!-- end industry section -->
 
+    <!-- ════ CFPB PEER COMPARISON & VOLUME ANALYSIS ════ -->
+    <div style="border-left:3px solid var(--accent-amber);padding-left:12px;margin-bottom:1.5rem;">
+        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--accent-amber);font-weight:700;margin-bottom:8px;">
+            <i class="fas fa-chart-bar me-1"></i> CFPB Peer Comparison & Volume Analysis
+        </div>
+
+        <!-- Row 1: Peer YoY Comparison + Top Complaint Drivers -->
+        <div class="row g-3 mb-3">
+            <div class="col-md-7"><div class="chart-container" style="height:370px;">
+                <h5 style="font-size:0.95rem;"><i class="fas fa-exchange-alt me-2"></i>Peer Volume Comparison YoY <span id="pva-yoy-label" style="font-size:0.7rem;color:var(--accent-amber);font-weight:400;"></span></h5>
+                <div style="position:relative;height:310px;"><canvas id="peerYoyChart"></canvas></div>
+            </div></div>
+            <div class="col-md-5"><div class="chart-container" style="height:370px;">
+                <h5 style="font-size:0.95rem;"><i class="fas fa-exclamation-triangle me-2"></i>Top Complaint Drivers <span id="pva-drivers-label" style="font-size:0.7rem;color:var(--accent-red);font-weight:400;"></span></h5>
+                <div style="position:relative;height:310px;"><canvas id="driversChart"></canvas></div>
+            </div></div>
+        </div>
+
+        <!-- Row 2: Volume Growth Trend + Peer Complaint Rates -->
+        <div class="row g-3 mb-3">
+            <div class="col-md-7"><div class="chart-container" style="height:370px;">
+                <h5 style="font-size:0.95rem;"><i class="fas fa-chart-line me-2"></i>CFPB Volume Growth Trend <span id="pva-growth-label" style="font-size:0.7rem;color:var(--accent-green);font-weight:400;"></span></h5>
+                <div style="position:relative;height:310px;"><canvas id="volumeGrowthChart"></canvas></div>
+            </div></div>
+            <div class="col-md-5"><div class="chart-container" style="height:370px;">
+                <h5 style="font-size:0.95rem;"><i class="fas fa-university me-2"></i>Peer Complaint Rates (12M) <span id="pva-rates-label" style="font-size:0.7rem;color:var(--accent-cyan);font-weight:400;"></span></h5>
+                <div style="position:relative;height:310px;"><canvas id="peerRatesChart"></canvas></div>
+            </div></div>
+        </div>
+    </div>
+
     <!-- ════ EXPANDABLE SECTIONS ════ -->
     <div class="accordion" id="mainAcc">
 
@@ -265,6 +296,109 @@ function renderClient(d){
     const irIs=Object.keys(irmix).slice(0,10),resps=['Closed with explanation','Closed with monetary relief','Closed with non-monetary relief','In progress'];
     const irTotals=irIs.map(i=>resps.reduce((s,r)=>s+(irmix[i][r]||0),0));
     D('issueRes');ch.issueRes=new Chart(document.getElementById('issueResChart').getContext('2d'),{type:'bar',data:{labels:irIs.map(i=>i.length>25?i.substring(0,25)+'...':i),datasets:resps.map(r=>({label:r,data:irIs.map((i,idx)=>{const t=irTotals[idx];return t?Math.round((irmix[i][r]||0)/t*100):0;}),backgroundColor:(RC[r]||'#64748b')+'99'}))},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:7}}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x}%`}}},scales:{x:{stacked:true,max:100,grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3',callback:v=>v+'%'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:7}}}}}});
+}
+
+// ── CFPB Peer Comparison & Volume Analysis Charts ──
+async function loadPeerVolumeAnalysis(){
+    try{
+        const r=await fetch('/api/peer-volume-analysis'+qs());const d=await r.json();
+        renderPeerYoy(d.peer_yoy);
+        renderDrivers(d.drivers);
+        renderVolumeGrowth(d.volume_growth);
+        renderPeerRates(d.peer_rates);
+    }catch(e){console.error('PVA load error:',e);}
+}
+
+function renderPeerYoy(data){
+    const comps=data.companies||[];
+    document.getElementById('pva-yoy-label').textContent=`| ${data.prior_year_label} vs ${data.current_year_label}`;
+    const labels=comps.map(c=>c.company.length>18?c.company.substring(0,18)+'...':c.company);
+    D('peerYoy');ch.peerYoy=new Chart(document.getElementById('peerYoyChart').getContext('2d'),{
+        type:'bar',
+        data:{labels:labels,datasets:[
+            {label:data.prior_year_label,data:comps.map(c=>c.prior_year),backgroundColor:'#64748baa',borderRadius:4},
+            {label:data.current_year_label,data:comps.map(c=>c.current_year),backgroundColor:'#6366f1cc',borderRadius:4},
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{
+            legend:{labels:{color:'#8b8fa3',font:{size:9}}},
+            tooltip:{callbacks:{afterLabel:ctx=>{const c=comps[ctx.dataIndex];return 'YoY: '+(c.yoy_change>0?'+':'')+c.yoy_change+'%';}}}
+        },scales:{
+            x:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8},maxRotation:45}},
+            y:{grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}
+        }}
+    });
+}
+
+function renderDrivers(data){
+    const items=data||[];
+    if(!items.length)return;
+    const maxYoy=Math.max(...items.map(i=>Math.abs(i.yoy_change||0)),1);
+    document.getElementById('pva-drivers-label').textContent='| YoY Change';
+    D('drivers');ch.drivers=new Chart(document.getElementById('driversChart').getContext('2d'),{
+        type:'bar',
+        data:{
+            labels:items.map(i=>i.issue.length>28?i.issue.substring(0,28)+'...':i.issue),
+            datasets:[
+                {label:'Current Year',data:items.map(i=>i.count),backgroundColor:'#f59e0bcc',borderRadius:4},
+                {label:'Prior Year',data:items.map(i=>i.prior_year),backgroundColor:'#64748b88',borderRadius:4},
+            ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{
+            legend:{labels:{color:'#8b8fa3',font:{size:8}}},
+            tooltip:{callbacks:{afterLabel:ctx=>{const i=items[ctx.dataIndex];return `Share: ${i.share_pct}% | YoY: ${i.yoy_change>0?'+':''}${i.yoy_change}%`;}}}
+        },scales:{
+            x:{grid:{color:'rgba(245,158,11,0.05)'},ticks:{color:'#8b8fa3'}},
+            y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:7}}}
+        }}
+    });
+}
+
+function renderVolumeGrowth(data){
+    const months=data.months||[];
+    if(!months.length)return;
+    const yoyPcts=months.map(m=>m.yoy_pct);
+    document.getElementById('pva-growth-label').textContent=`| Overall YoY: ${data.overall_yoy_pct>0?'+':''}${data.overall_yoy_pct}%`;
+    D('volumeGrowth');ch.volumeGrowth=new Chart(document.getElementById('volumeGrowthChart').getContext('2d'),{
+        type:'bar',
+        data:{labels:months.map(m=>m.month),datasets:[
+            {label:'Monthly Volume',data:months.map(m=>m.volume),backgroundColor:'#6366f166',borderColor:'#6366f1',borderWidth:1,borderRadius:3,yAxisID:'y',order:2},
+            {label:'YoY % Change',data:yoyPcts,type:'line',borderColor:'#f59e0b',backgroundColor:'transparent',pointRadius:2,pointBackgroundColor:'#f59e0b',tension:0.4,yAxisID:'y1',order:1,borderWidth:2},
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{
+            legend:{labels:{color:'#8b8fa3',font:{size:9}}},
+            tooltip:{callbacks:{label:ctx=>{
+                if(ctx.dataset.yAxisID==='y1')return 'YoY: '+(ctx.parsed.y!=null?ctx.parsed.y+'%':'N/A');
+                return 'Volume: '+fmt(ctx.parsed.y);
+            }}}
+        },scales:{
+            x:{grid:{color:'rgba(99,102,241,0.03)'},ticks:{color:'#8b8fa3',maxTicksLimit:12,font:{size:8}}},
+            y:{position:'left',grid:{color:'rgba(99,102,241,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true},
+            y1:{position:'right',grid:{display:false},ticks:{color:'#f59e0b',callback:v=>v+'%',font:{size:8}}}
+        }}
+    });
+}
+
+function renderPeerRates(data){
+    const items=data||[];
+    if(!items.length)return;
+    document.getElementById('pva-rates-label').textContent=`| ${items.length} Companies`;
+    const labels=items.map(i=>{const n=i.company.length>18?i.company.substring(0,18)+'...':i.company;return n;});
+    const colors=items.map(i=>i.is_target?'#6366f1cc':'#06b6d4aa');
+    D('peerRates');ch.peerRates=new Chart(document.getElementById('peerRatesChart').getContext('2d'),{
+        type:'bar',
+        data:{labels:labels,datasets:[
+            {label:'Complaints (12M)',data:items.map(i=>i.volume_12m),backgroundColor:colors,borderRadius:4},
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{
+            legend:{display:false},
+            tooltip:{callbacks:{afterLabel:ctx=>{const i=items[ctx.dataIndex];return `Resolution: ${i.resolution_rate}% | Monetary: ${i.monetary_relief_rate}% | Timely: ${i.timely_rate}%`;}}}
+        },scales:{
+            x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},
+            y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8},callback:function(val,idx){
+                const it=items[idx];return it&&it.is_target?'>> '+labels[idx]:labels[idx];
+            }}}
+        }}
+    });
 }
 
 // Keep old loadKPIs for backward compat but it's not called directly anymore
@@ -486,6 +620,9 @@ async function loadAll(){
 
     // Render Products/Issues/SubProducts from cached data
     renderClient(d);
+
+    // Load peer volume analysis charts
+    loadPeerVolumeAnalysis();
 
     // Preload remaining sections
     ['top5','geo','banks','sources'].forEach((s,i)=>{

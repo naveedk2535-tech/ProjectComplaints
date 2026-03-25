@@ -472,6 +472,21 @@ def create_app():
             'comparison': get_peer_comparison(company, peer_names)
         })
 
+    @app.route('/api/peer-volume-analysis')
+    @login_required
+    def api_peer_volume_analysis():
+        """Peer YoY comparison, top drivers, volume growth, peer rates."""
+        from services.analytics import (get_peer_yoy_comparison, get_complaint_drivers_yoy,
+            get_volume_growth_trend, get_peer_complaint_rates)
+        company = request.args.get('company') or ''
+        months = request.args.get('months', 24, type=int)
+        return jsonify({
+            'peer_yoy': get_peer_yoy_comparison(company=company or None),
+            'drivers': get_complaint_drivers_yoy(company=company or None),
+            'volume_growth': get_volume_growth_trend(company=company or None, months=months),
+            'peer_rates': get_peer_complaint_rates(company=company or None),
+        })
+
     @app.route('/api/issue-tree')
     @login_required
     def api_issue_tree():
