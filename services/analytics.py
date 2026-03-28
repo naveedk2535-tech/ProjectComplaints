@@ -215,24 +215,74 @@ def get_companies():
 _bank_comparison_cache = {'data': None, 'time': 0}
 
 def get_bank_comparison():
-    import time as _time
+    """Bank comparison using a SINGLE batch query instead of 60+ individual queries."""
     if _bank_comparison_cache['data'] and _time.time() - _bank_comparison_cache['time'] < 300:
         return _bank_comparison_cache['data']
 
-    companies = get_companies()[:20]
+    # One query for all 20 companies at once
+    rows = db.session.query(
+        Complaint.company,
+        func.count().label('total'),
+        func.sum(case((Complaint.company_response.like('Closed%'), 1), else_=0)).label('closed'),
+        func.sum(case((Complaint.company_response == 'Closed with monetary relief', 1), else_=0)).label('monetary'),
+        func.sum(case((Complaint.timely_response == True, 1), else_=0)).label('timely'),
+        func.sum(case((Complaint.narrative.isnot(None), 1), else_=0)).label('with_narrative'),
+    ).group_by(Complaint.company).order_by(desc('total')).limit(20).all()
+
+    # Batch trend data for health score (one query for all)
+    from models.database import MonthlyVolume
+    trend_q = db.session.query(
+        MonthlyVolume.company,
+        MonthlyVolume.month,
+        MonthlyVolume.total_complaints
+    ).filter(MonthlyVolume.company.in_([r.company for r in rows])).order_by(
+        MonthlyVolume.company, MonthlyVolume.month
+    ).all()
+    # Build per-company trend lookup
+    trends = {}
+    for t in trend_q:
+        trends.setdefault(t.company, []).append(t.total_complaints)
+
     results = []
-    for c in companies:
-        kpis = get_kpis(company=c['company'])
-        health = get_health_score(company=c['company'])
+    for r in rows:
+        total = r.total or 0
+        if total == 0:
+            continue
+        closed = r.closed or 0
+        monetary = r.monetary or 0
+        timely = r.timely or 0
+        res_rate = round(closed / total * 100, 1)
+        mon_rate = round(monetary / total * 100, 1)
+        tim_rate = round(timely / total * 100, 1)
+        narr_rate = round((r.with_narrative or 0) / total * 100, 1)
+
+        # Inline health score (no extra queries)
+        res_score = min(res_rate, 100)
+        mon_score = min(mon_rate * 5, 100)
+        tim_score = min(tim_rate, 100)
+        trend_data = trends.get(r.company, [])
+        trend_score = 50
+        if len(trend_data) >= 6:
+            recent = sum(trend_data[-3:])
+            older = sum(trend_data[-6:-3])
+            if older > 0:
+                change = (recent - older) / older
+                trend_score = max(0, min(100, 50 - change * 50))
+        score = round(
+            res_score * 0.30 + mon_score * 0.20 + tim_score * 0.15 +
+            trend_score * 0.20 + (100 - min(narr_rate, 100)) * 0.15, 1)
+        grade = 'A' if score >= 80 else 'B' if score >= 65 else 'C' if score >= 50 else 'D' if score >= 35 else 'F'
+
         results.append({
-            'company': c['company'],
-            'total_complaints': c['count'],
-            'resolution_rate': kpis['resolution_rate'],
-            'monetary_relief_rate': kpis['monetary_relief_rate'],
-            'timely_rate': kpis['timely_rate'],
-            'health_score': health['score'],
-            'health_grade': health['grade'],
+            'company': r.company,
+            'total_complaints': total,
+            'resolution_rate': res_rate,
+            'monetary_relief_rate': mon_rate,
+            'timely_rate': tim_rate,
+            'health_score': score,
+            'health_grade': grade,
         })
+
     _bank_comparison_cache['data'] = results
     _bank_comparison_cache['time'] = _time.time()
     return results
@@ -599,9 +649,7 @@ def _get_peer_company_list(company, limit):
 
 
 def get_peer_yoy_comparison(company=None, limit=6):
-    """YoY complaint volume comparison for a company and its top peers.
-    Returns current year vs prior year volumes per company.
-    Excludes the current (partial) month."""
+    """YoY complaint volume comparison - single batch query instead of 12 individual ones."""
     from models.database import MonthlyVolume
     today = datetime.utcnow().date()
     cur_year = today.year
@@ -610,30 +658,29 @@ def get_peer_yoy_comparison(company=None, limit=6):
 
     companies = _get_peer_company_list(company, limit)
 
+    # Single query: group by company + year
+    vol_q = db.session.query(
+        MonthlyVolume.company,
+        func.substr(MonthlyVolume.month, 1, 4).label('year'),
+        func.sum(MonthlyVolume.total_complaints).label('total')
+    ).filter(
+        MonthlyVolume.company.in_(companies),
+        MonthlyVolume.month <= max_month
+    ).group_by(MonthlyVolume.company, 'year').all()
+
+    # Build lookup: {company: {year: total}}
+    vol_map = {}
+    for r in vol_q:
+        vol_map.setdefault(r.company, {})[r.year] = r.total
+
     results = []
     for comp in companies:
-        cur_vol = db.session.query(
-            func.sum(MonthlyVolume.total_complaints)
-        ).filter(
-            MonthlyVolume.company == comp,
-            MonthlyVolume.month.like(f'{cur_year}-%'),
-            MonthlyVolume.month <= max_month
-        ).scalar() or 0
-
-        prev_vol = db.session.query(
-            func.sum(MonthlyVolume.total_complaints)
-        ).filter(
-            MonthlyVolume.company == comp,
-            MonthlyVolume.month.like(f'{prev_year}-%')
-        ).scalar() or 0
-
+        cur_vol = vol_map.get(comp, {}).get(str(cur_year), 0)
+        prev_vol = vol_map.get(comp, {}).get(str(prev_year), 0)
         yoy_change = round((cur_vol - prev_vol) / prev_vol * 100, 1) if prev_vol else 0
-
         results.append({
-            'company': comp,
-            'current_year': cur_vol,
-            'prior_year': prev_vol,
-            'yoy_change': yoy_change,
+            'company': comp, 'current_year': cur_vol,
+            'prior_year': prev_vol, 'yoy_change': yoy_change,
         })
 
     return {
@@ -787,35 +834,46 @@ def get_volume_growth_trend(company=None, months=24):
 
 
 def get_peer_complaint_rates(company=None, limit=8):
-    """Complaint volume per peer company with rates and rankings.
-    Uses last 12 complete months (excludes current partial month)."""
+    """Peer complaint rates - 2 batch queries instead of 16 individual ones."""
     from models.database import MonthlyVolume
     max_month = _last_complete_month()
-    # 12 months back from the last complete month
     year, mo = max_month.split('-')
     twelve_back = datetime(int(year), int(mo), 1) - timedelta(days=365)
     twelve_ago_key = f'{twelve_back.year}-{twelve_back.month:02d}'
 
     companies = _get_peer_company_list(company, limit)
 
+    # Batch 1: volumes for all companies at once
+    vol_q = db.session.query(
+        MonthlyVolume.company,
+        func.sum(MonthlyVolume.total_complaints).label('total')
+    ).filter(
+        MonthlyVolume.company.in_(companies),
+        MonthlyVolume.month >= twelve_ago_key,
+        MonthlyVolume.month <= max_month
+    ).group_by(MonthlyVolume.company).all()
+    vol_map = {r.company: r.total for r in vol_q}
+
+    # Batch 2: KPIs for all companies at once
+    kpi_q = db.session.query(
+        Complaint.company,
+        func.count().label('total'),
+        func.sum(case((Complaint.company_response.like('Closed%'), 1), else_=0)).label('closed'),
+        func.sum(case((Complaint.company_response == 'Closed with monetary relief', 1), else_=0)).label('monetary'),
+        func.sum(case((Complaint.timely_response == True, 1), else_=0)).label('timely'),
+    ).filter(Complaint.company.in_(companies)).group_by(Complaint.company).all()
+    kpi_map = {r.company: r for r in kpi_q}
+
     results = []
     for comp in companies:
-        vol_12m = db.session.query(
-            func.sum(MonthlyVolume.total_complaints)
-        ).filter(
-            MonthlyVolume.company == comp,
-            MonthlyVolume.month >= twelve_ago_key,
-            MonthlyVolume.month <= max_month
-        ).scalar() or 0
-
-        kpis = get_kpis(company=comp)
-
+        r = kpi_map.get(comp)
+        total = r.total if r else 0
         results.append({
             'company': comp,
-            'volume_12m': vol_12m,
-            'resolution_rate': kpis['resolution_rate'],
-            'monetary_relief_rate': kpis['monetary_relief_rate'],
-            'timely_rate': kpis['timely_rate'],
+            'volume_12m': vol_map.get(comp, 0),
+            'resolution_rate': round((r.closed or 0) / total * 100, 1) if r and total else 0,
+            'monetary_relief_rate': round((r.monetary or 0) / total * 100, 1) if r and total else 0,
+            'timely_rate': round((r.timely or 0) / total * 100, 1) if r and total else 0,
             'is_target': comp == company,
         })
 
