@@ -1074,18 +1074,16 @@ def create_app():
         # Bank comparison (single batch query now)
         banks = get_bank_comparison()
 
-        # Text analytics - only for specific company (industry-wide is too slow)
-        text = {}
-        if company:
-            from services.text_analytics import (get_top_words, get_sentiment_summary,
-                get_complaint_themes, get_narrative_stats, get_monthly_word_trends, get_trending_words)
-            text = {
-                'words': get_top_words(company=company),
-                'sentiment': get_sentiment_summary(company=company),
-                'themes': get_complaint_themes(company=company),
-                'narrative_stats': get_narrative_stats(company=company),
-                'word_trends': get_monthly_word_trends(company=company),
-                'trending': get_trending_words(company=company),
+        # Text analytics (has its own 5-min internal cache)
+        from services.text_analytics import (get_top_words, get_sentiment_summary,
+            get_complaint_themes, get_narrative_stats, get_monthly_word_trends, get_trending_words)
+        text = {
+            'words': get_top_words(company=company or None),
+            'sentiment': get_sentiment_summary(company=company or None),
+            'themes': get_complaint_themes(company=company or None),
+            'narrative_stats': get_narrative_stats(company=company or None),
+            'word_trends': get_monthly_word_trends(company=company or None),
+            'trending': get_trending_words(company=company or None),
             }
 
         # Data sources (lightweight counts)
