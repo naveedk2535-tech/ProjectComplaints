@@ -509,8 +509,9 @@ async function loadResponse(){
 
 // Section loaders
 const SL={
-    top5:async()=>{
-        const r=await fetch('/api/top5-comparison'+qs());const d=await r.json();
+    top5:()=>{
+        if(!_dashData||!_dashData.top5)return;
+        const d=_dashData.top5;
         const hasCo=!!C();
         const secs=[{t:'Products',d:d.products,k:'product'},{t:'Issues',d:d.issues,k:'issue'},{t:'Sub-Products',d:d.sub_products,k:'name'},{t:'Sub-Issues',d:d.sub_issues,k:'name'},{t:'States',d:d.states,k:'state'},{t:'Channels',d:d.channels,k:'channel'},{t:'Tags',d:d.tags,k:'name'},{t:'Resolution',d:d.responses,k:'response'}];
         document.getElementById('top5-box').innerHTML='<div class="t5g">'+secs.map(s=>{
@@ -527,23 +528,23 @@ const SL={
             }).join('')}</div>`;
         }).join('')+'</div>';
     },
-    client:async()=>{
+    client:()=>{
+        if(!_dashData)return;const d=_dashData;
         // Peer YoY + Volume Growth (client-centric, from cached mega data)
-        loadClientPeerCharts(_dashData);
-        // Products & Issues
-        const[pr,ir,spr,irm]=await Promise.all([fetch('/api/product-breakdown'+qs()),fetch('/api/issue-breakdown'+qs()),fetch('/api/sub-product-breakdown'+qs()),fetch('/api/issue-resolution-mix'+qs())]);
-        const products=await pr.json(),issues=await ir.json(),subp=await spr.json(),irmix=await irm.json();const pt=products.reduce((s,x)=>s+x.count,0);
+        loadClientPeerCharts(d);
+        // Products & Issues (already in mega data)
+        const products=d.products,issues=d.issues,subp=d.sub_products,irmix=d.issue_resolution;
+        const pt=products.reduce((s,x)=>s+x.count,0);
         D('product');ch.product=new Chart(document.getElementById('productChart').getContext('2d'),{type:'bar',data:{labels:products.map(x=>`${x.product} (${(x.count/pt*100).toFixed(0)}%)`),datasets:[{data:products.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
         const it=issues.reduce((s,x)=>s+x.count,0);
         D('issue');ch.issue=new Chart(document.getElementById('issueChart').getContext('2d'),{type:'bar',data:{labels:issues.map(x=>{const n=x.issue.length>30?x.issue.substring(0,30)+'...':x.issue;return `${n} (${(x.count/it*100).toFixed(0)}%)`;}),datasets:[{data:issues.map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}}}}});
         const spt=subp.reduce((s,x)=>s+x.count,0);D('subProduct');ch.subProduct=new Chart(document.getElementById('subProductChart').getContext('2d'),{type:'bar',data:{labels:subp.slice(0,10).map(x=>`${x.sub_product.substring(0,25)} (${(x.count/spt*100).toFixed(0)}%)`),datasets:[{data:subp.slice(0,10).map(x=>x.count),backgroundColor:CL.map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8}}}}}});
-        // Issue Resolution Quality - show as 100% stacked (percentages)
         const irIs=Object.keys(irmix).slice(0,10),resps=['Closed with explanation','Closed with monetary relief','Closed with non-monetary relief','In progress'];
         const irTotals=irIs.map(i=>resps.reduce((s,r)=>s+(irmix[i][r]||0),0));
         D('issueRes');ch.issueRes=new Chart(document.getElementById('issueResChart').getContext('2d'),{type:'bar',data:{labels:irIs.map((i,idx)=>{const n=i.length>25?i.substring(0,25)+'...':i;return n;}),datasets:resps.map(r=>({label:r,data:irIs.map((i,idx)=>{const t=irTotals[idx];return t?Math.round((irmix[i][r]||0)/t*100):0;}),backgroundColor:(RC[r]||'#64748b')+'99'}))},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:7}}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x}%`}}},scales:{x:{stacked:true,max:100,grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3',callback:v=>v+'%'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:7}}}}}});
-        // Word Intelligence (part of same section)
-        const[wr,sr,tr,twr,nsr]=await Promise.all([fetch('/api/text/top-words'+qs()),fetch('/api/text/sentiment'+qs()),fetch('/api/text/themes'+qs()),fetch('/api/text/word-trends'+qs()),fetch('/api/text/narrative-stats'+qs())]);
-        const words=await wr.json(),sent=await sr.json(),themes=await tr.json();let wt=[],ns={};try{wt=await twr.json();}catch(e){}try{ns=await nsr.json();}catch(e){}
+        // Word Intelligence (from mega data)
+        const tx=d.text||{};
+        const words=tx.words||[],sent=tx.sentiment||{},themes=tx.themes||[],wt=tx.word_trends||[],ns=tx.narrative_stats||{},td=tx.trending||{};
         const sc=sent.sentiment_score||0;document.getElementById('s-score').textContent=sc>0?'+'+sc.toFixed(2):sc.toFixed(2);document.getElementById('s-score').style.color=sc>0?'var(--accent-green)':'var(--accent-red)';
         document.getElementById('s-neg').textContent=fmt(sent.negative_count);document.getElementById('s-pos').textContent=fmt(sent.positive_count);document.getElementById('s-total').textContent=fmt(ns.total_with_narrative||0);
         document.getElementById('neg-words').innerHTML=(sent.top_negative_words||[]).map(w=>`<span style="display:inline-block;background:rgba(239,68,68,0.15);padding:0.15rem 0.4rem;border-radius:5px;margin:1px;font-weight:600;font-size:0.75rem;color:var(--accent-red);">${w.word} (${fmt(w.count)})</span>`).join('');
@@ -551,21 +552,23 @@ const SL={
         D('words');ch.words=new Chart(document.getElementById('wordsChart').getContext('2d'),{type:'bar',data:{labels:words.slice(0,20).map(w=>w.word),datasets:[{data:words.slice(0,20).map(w=>w.count),backgroundColor:'#06b6d499',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:9}}}}}});
         D('themes');ch.themes=new Chart(document.getElementById('themesChart').getContext('2d'),{type:'bar',data:{labels:themes.map(t=>`${t.theme} (${t.percentage}%)`),datasets:[{data:themes.map(t=>t.count),backgroundColor:CL.slice(0,themes.length).map(c=>c+'99'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8',font:{size:8},maxRotation:45}},y:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}});
         if(wt.length){const ms=wt[0].months?.map(m=>m.month)||[];D('wordTrend');ch.wordTrend=new Chart(document.getElementById('wordTrendChart').getContext('2d'),{type:'line',data:{labels:ms,datasets:wt.slice(0,8).map((w,i)=>({label:w.word,data:w.months.map(m=>m.count),borderColor:CL[i],tension:0.4,pointRadius:2,fill:false}))},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b8fa3',font:{size:9}}}},scales:{x:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'}},y:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}});}
-        try{const tr2=await fetch('/api/text/trending-words'+qs());const td=await tr2.json();
         document.getElementById('trending-up').innerHTML=(td.trending_up||[]).slice(0,6).map(w=>`<div class="d-flex justify-content-between py-1" style="border-bottom:1px solid var(--border-color);"><span>${w.word}</span><span style="color:var(--accent-red);font-weight:700;">+${w.change_pct.toFixed(0)}%</span></div>`).join('')||'None';
-        document.getElementById('trending-down').innerHTML=(td.trending_down||[]).slice(0,6).map(w=>`<div class="d-flex justify-content-between py-1" style="border-bottom:1px solid var(--border-color);"><span>${w.word}</span><span style="color:var(--accent-green);font-weight:700;">${w.change_pct.toFixed(0)}%</span></div>`).join('')||'None';}catch(e){}
+        document.getElementById('trending-down').innerHTML=(td.trending_down||[]).slice(0,6).map(w=>`<div class="d-flex justify-content-between py-1" style="border-bottom:1px solid var(--border-color);"><span>${w.word}</span><span style="color:var(--accent-green);font-weight:700;">${w.change_pct.toFixed(0)}%</span></div>`).join('')||'None';
     },
-    geo:async()=>{
-        const[sr,cr]=await Promise.all([fetch('/api/state-breakdown'+qs()),fetch('/api/submission-channels'+qs())]);const states=await sr.json(),channels=await cr.json();
+    geo:()=>{
+        if(!_dashData)return;
+        const states=_dashData.states,channels=_dashData.channels;
         D('state');ch.state=new Chart(document.getElementById('stateChart').getContext('2d'),{type:'bar',data:{labels:states.slice(0,15).map(x=>x.state),datasets:[{data:states.slice(0,15).map(x=>x.count),backgroundColor:'#06b6d499',borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#e0e0e8'}},y:{grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3'},beginAtZero:true}}}});
         const ct=channels.reduce((s,x)=>s+x.count,0);D('channel');ch.channel=new Chart(document.getElementById('channelChart').getContext('2d'),{type:'doughnut',data:{labels:channels.map(x=>`${x.channel} (${(x.count/ct*100).toFixed(1)}%)`),datasets:[{data:channels.map(x=>x.count),backgroundColor:CL.slice(2,2+channels.length).map(c=>c+'cc'),borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3',font:{size:10},padding:8}}}}});
     },
-    banks:async()=>{
-        const r=await fetch('/api/bank-comparison');const d=await r.json();const gc={A:'var(--accent-green)',B:'var(--accent-cyan)',C:'var(--accent-amber)',D:'var(--accent-orange)',F:'var(--accent-red)'};const sel=C();
+    banks:()=>{
+        if(!_dashData||!_dashData.banks)return;
+        const d=_dashData.banks;const gc={A:'var(--accent-green)',B:'var(--accent-cyan)',C:'var(--accent-amber)',D:'var(--accent-orange)',F:'var(--accent-red)'};const sel=C();
         document.getElementById('bankTB').innerHTML=d.map((b,i)=>{const hl=b.company===sel;return `<tr style="${hl?'background:rgba(99,102,241,0.12);':''}"><td style="color:var(--text-muted);font-weight:600;">${i+1}</td><td style="font-weight:${hl?'800':'600'};">${hl?'&#9733; ':''}${b.company}</td><td>${fmt(b.total_complaints)}</td><td><span style="color:${b.resolution_rate>85?'var(--accent-green)':'var(--accent-amber)'};font-weight:600;">${b.resolution_rate}%</span></td><td>${b.monetary_relief_rate}%</td><td>${b.timely_rate}%</td><td style="font-weight:700;">${b.health_score}</td><td><span style="color:${gc[b.health_grade]||'var(--text-muted)'};font-weight:800;font-size:1rem;">${b.health_grade}</span></td></tr>`;}).join('');
     },
-    sources:async()=>{
-        const r=await fetch('/api/data-sources');const d=await r.json();const c=d.cfpb||{};
+    sources:()=>{
+        if(!_dashData||!_dashData.data_sources)return;
+        const d=_dashData.data_sources;const c=d.cfpb||{};
         document.getElementById('src-box').innerHTML=`<div class="row g-3">
             <div class="col-md-6"><div class="card-cw p-3"><h6 style="font-weight:700;"><i class="fas fa-landmark me-2" style="color:var(--accent-indigo-light);"></i>CFPB</h6><div style="font-size:0.82rem;color:var(--text-secondary);">
                 <div class="d-flex justify-content-between mb-1"><span>Complaints</span><span style="font-weight:700;">${fmt(c.complaints)}</span></div>
