@@ -564,8 +564,15 @@ def _last_complete_month():
     return f'{last_complete.year}-{last_complete.month:02d}'
 
 
+_peer_list_cache = {}
+
 def _get_peer_company_list(company, limit):
-    """Shared helper: get target company + its peers based on product overlap."""
+    """Shared helper: get target company + its peers based on product overlap.
+    Cached for 10 minutes since peer relationships change very slowly."""
+    cache_key = f'{company}_{limit}'
+    if cache_key in _peer_list_cache and _time.time() - _peer_list_cache[cache_key][1] < 600:
+        return _peer_list_cache[cache_key][0]
+
     if company:
         target_products = db.session.query(Complaint.product).filter(
             Complaint.company == company
@@ -578,13 +585,17 @@ def _get_peer_company_list(company, limit):
                 Complaint.company != company,
                 Complaint.product.in_(product_set)
             ).group_by(Complaint.company).order_by(desc('count')).limit(limit - 1)
-            return [company] + [r.company for r in peer_q.all()]
-        return [company]
+            result = [company] + [r.company for r in peer_q.all()]
+        else:
+            result = [company]
     else:
         top_q = db.session.query(
             Complaint.company, func.count().label('count')
         ).group_by(Complaint.company).order_by(desc('count')).limit(limit)
-        return [r.company for r in top_q.all()]
+        result = [r.company for r in top_q.all()]
+
+    _peer_list_cache[cache_key] = (result, _time.time())
+    return result
 
 
 def get_peer_yoy_comparison(company=None, limit=6):

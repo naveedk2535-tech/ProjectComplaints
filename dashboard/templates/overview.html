@@ -301,26 +301,19 @@ function renderClient(d){
     D('issueRes');ch.issueRes=new Chart(document.getElementById('issueResChart').getContext('2d'),{type:'bar',data:{labels:irIs.map(i=>i.length>25?i.substring(0,25)+'...':i),datasets:resps.map(r=>({label:r,data:irIs.map((i,idx)=>{const t=irTotals[idx];return t?Math.round((irmix[i][r]||0)/t*100):0;}),backgroundColor:(RC[r]||'#64748b')+'99'}))},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top',labels:{color:'#8b8fa3',font:{size:7}}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x}%`}}},scales:{x:{stacked:true,max:100,grid:{color:'rgba(6,182,212,0.05)'},ticks:{color:'#8b8fa3',callback:v=>v+'%'}},y:{stacked:true,grid:{display:false},ticks:{color:'#e0e0e8',font:{size:7}}}}}});
 }
 
-// ── Industry-level: Drivers + Peer Rates ──
-async function loadIndustryAnalysis(){
-    try{
-        const r=await fetch('/api/peer-volume-analysis'+qs());const d=await r.json();
-        _pvaData=d; // cache for client section reuse
-        renderDrivers(d.drivers);
-        renderPeerRates(d.peer_rates);
-        document.getElementById('industry-section-label').textContent=C()?C()+' Complaint Analysis':'Industry Complaint Analysis';
-    }catch(e){console.error('Industry analysis error:',e);}
+// ── Industry-level: Drivers + Peer Rates (uses mega endpoint data) ──
+function loadIndustryAnalysis(d){
+    renderDrivers(d.drivers);
+    renderPeerRates(d.peer_rates);
+    document.getElementById('industry-section-label').textContent=C()?C()+' Complaint Analysis':'Industry Complaint Analysis';
 }
-let _pvaData=null;
 
-// ── Client-centric: Peer YoY + Volume Growth (loaded inside client section) ──
-async function loadClientPeerCharts(){
-    try{
-        let d=_pvaData;
-        if(!d){const r=await fetch('/api/peer-volume-analysis'+qs());d=await r.json();_pvaData=d;}
-        renderPeerYoy(d.peer_yoy);
-        renderVolumeGrowth(d.volume_growth);
-    }catch(e){console.error('Client peer charts error:',e);}
+// ── Client-centric: Peer YoY + Volume Growth (uses mega endpoint data) ──
+function loadClientPeerCharts(d){
+    if(!d)d=_dashData;
+    if(!d)return;
+    renderPeerYoy(d.peer_yoy);
+    renderVolumeGrowth(d.volume_growth);
 }
 
 function renderPeerYoy(data){
@@ -535,8 +528,8 @@ const SL={
         }).join('')+'</div>';
     },
     client:async()=>{
-        // Peer YoY + Volume Growth (client-centric)
-        loadClientPeerCharts();
+        // Peer YoY + Volume Growth (client-centric, from cached mega data)
+        loadClientPeerCharts(_dashData);
         // Products & Issues
         const[pr,ir,spr,irm]=await Promise.all([fetch('/api/product-breakdown'+qs()),fetch('/api/issue-breakdown'+qs()),fetch('/api/sub-product-breakdown'+qs()),fetch('/api/issue-resolution-mix'+qs())]);
         const products=await pr.json(),issues=await ir.json(),subp=await spr.json(),irmix=await irm.json();const pt=products.reduce((s,x)=>s+x.count,0);
@@ -599,7 +592,6 @@ document.querySelectorAll('.collapse[data-section]').forEach(el=>{
 let _dashData = null; // Cached dashboard data
 
 async function loadAll(){
-    _pvaData=null; // reset cached peer analysis when filters change
     // ONE request for all core dashboard data
     const r = await fetch('/api/dashboard-data'+qs());
     _dashData = await r.json();
@@ -638,8 +630,8 @@ async function loadAll(){
     // Render Products/Issues/SubProducts from cached data
     renderClient(d);
 
-    // Load industry-level charts (drivers + peer rates)
-    loadIndustryAnalysis();
+    // Load industry-level charts from mega endpoint data (no extra fetch)
+    loadIndustryAnalysis(d);
 
     // Preload remaining sections
     ['top5','geo','banks','sources'].forEach((s,i)=>{

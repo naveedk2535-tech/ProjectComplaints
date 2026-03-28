@@ -983,6 +983,14 @@ def create_app():
                         'total': pt,
                     }
 
+        # Peer volume analysis (merged here for caching)
+        from services.analytics import (get_peer_yoy_comparison, get_complaint_drivers_yoy,
+            get_volume_growth_trend, get_peer_complaint_rates)
+        peer_yoy = get_peer_yoy_comparison(company=company or None)
+        drivers = get_complaint_drivers_yoy(company=company or None)
+        volume_growth = get_volume_growth_trend(company=company or None, months=months_back or 24)
+        peer_rates = get_peer_complaint_rates(company=company or None)
+
         result = {
             'kpis': kpis, 'health': health, 'mom': mom,
             'monthly_volume': vol_raw, 'responses': responses,
@@ -990,6 +998,8 @@ def create_app():
             'sub_products': sub_products, 'states': states,
             'channels': channels, 'issue_resolution': issue_res,
             'peer': peer,
+            'peer_yoy': peer_yoy, 'drivers': drivers,
+            'volume_growth': volume_growth, 'peer_rates': peer_rates,
         }
 
         _dashboard_cache[cache_key] = (result, _t.time())
