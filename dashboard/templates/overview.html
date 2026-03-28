@@ -636,20 +636,10 @@ async function loadAll(){
     // Load industry-level charts from mega endpoint data (no extra fetch)
     loadIndustryAnalysis(d);
 
-    // All sections render instantly from _dashData - zero API calls
+    // All sections render instantly from _dashData - zero extra API calls
     ['top5','client','geo','banks','sources'].forEach(s=>{
         if(SL[s]){SL[s]();document.querySelector(`[data-section="${s}"]`)?.setAttribute('data-loaded','1');}
     });
-
-    // Pre-warm caches for other companies in background
-    if(!C()){
-        fetch('/api/warm-cache?months='+(P()||12)).then(r=>r.json()).then(d=>{
-            (d.need_warming||[]).forEach(co=>{
-                // Fire and forget - warms the file cache for when user picks this company
-                fetch('/api/dashboard-data?company='+encodeURIComponent(co)+'&months='+(P()||12));
-            });
-        }).catch(()=>{});
-    }
 }
 loadCompanies().then(()=>loadAll());
 </script>
