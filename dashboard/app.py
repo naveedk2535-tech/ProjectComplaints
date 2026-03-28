@@ -985,130 +985,11 @@ def create_app():
 
         # Peer volume analysis
         from services.analytics import (get_peer_yoy_comparison, get_complaint_drivers_yoy,
-            get_volume_growth_trend, get_peer_complaint_rates, get_bank_comparison)
+            get_volume_growth_trend, get_peer_complaint_rates)
         peer_yoy = get_peer_yoy_comparison(company=company or None)
         drivers = get_complaint_drivers_yoy(company=company or None)
         volume_growth = get_volume_growth_trend(company=company or None, months=months_back or 24)
         peer_rates = get_peer_complaint_rates(company=company or None)
-
-        # Top 5 analysis (inline - avoid separate API call)
-        from sqlalchemy import func as sqf2, desc as sqd2
-        _today = date.today()
-        _prev_end = _today.replace(day=1) - timedelta(days=1)
-        _prev_start = _prev_end.replace(day=1)
-        _prev2_end = _prev_start - timedelta(days=1)
-        _prev2_start = _prev2_end.replace(day=1)
-
-        def _batch_top5(field, filter_null=True):
-            col = getattr(Complaint, field)
-            q = db.session.query(col, sqf2.count().label('count'))
-            if company:
-                q = q.filter(Complaint.company == company)
-            if filter_null:
-                q = q.filter(col.isnot(None), col != '')
-            q = q.group_by(col).order_by(sqd2('count')).limit(5)
-            items = [{'name': r[0] or '', 'count': r[1]} for r in q.all()]
-            names = [it['name'] for it in items]
-            if not names:
-                return items
-            pq = db.session.query(col, sqf2.count().label('c')).filter(
-                Complaint.date_received >= _prev_start, Complaint.date_received <= _prev_end, col.in_(names))
-            if company:
-                pq = pq.filter(Complaint.company == company)
-            prev_counts = {r[0]: r[1] for r in pq.group_by(col).all()}
-            p2q = db.session.query(col, sqf2.count().label('c')).filter(
-                Complaint.date_received >= _prev2_start, Complaint.date_received <= _prev2_end, col.in_(names))
-            if company:
-                p2q = p2q.filter(Complaint.company == company)
-            prev2_counts = {r[0]: r[1] for r in p2q.group_by(col).all()}
-            for it in items:
-                n = it['name']
-                cur = prev_counts.get(n, 0)
-                prev = prev2_counts.get(n, 0)
-                it['cur_month'] = cur
-                it['prev_month'] = prev
-                it['mom_change'] = round((cur - prev) / prev * 100, 0) if prev else (100 if cur else 0)
-            return items
-
-        top5 = {
-            'products': _batch_top5('product'),
-            'issues': _batch_top5('issue'),
-            'sub_products': _batch_top5('sub_product'),
-            'sub_issues': _batch_top5('sub_issue'),
-            'states': _batch_top5('state'),
-            'responses': _batch_top5('company_response'),
-            'channels': _batch_top5('submitted_via'),
-            'tags': _batch_top5('tags'),
-            'public_responses': _batch_top5('company_public_response'),
-        }
-        for item in top5['products']:
-            item['product'] = item['name']
-        for item in top5['issues']:
-            item['issue'] = item['name']
-        for item in top5['states']:
-            item['state'] = item['name']
-        for item in top5['responses']:
-            item['response'] = item['name']
-        for item in top5['channels']:
-            item['channel'] = item['name']
-        if company:
-            def _get_peer_pct(field):
-                col = getattr(Complaint, field)
-                total_q = Complaint.query.filter(Complaint.company != company).count()
-                if not total_q:
-                    return {}
-                q = db.session.query(col, sqf2.count().label('c')).filter(
-                    Complaint.company != company, col.isnot(None), col != ''
-                ).group_by(col).all()
-                return {r[0]: round(r[1] / total_q * 100, 1) for r in q}
-            peer_products = _get_peer_pct('product')
-            peer_issues = _get_peer_pct('issue')
-            peer_states = _get_peer_pct('state')
-            for item in top5['products']:
-                item['peer_pct'] = peer_products.get(item['name'], 0)
-            for item in top5['issues']:
-                item['peer_pct'] = peer_issues.get(item['name'], 0)
-            for item in top5['states']:
-                item['peer_pct'] = peer_states.get(item['name'], 0)
-
-        # Bank comparison
-        banks = get_bank_comparison()
-
-        # Text analytics
-        from services.text_analytics import (get_top_words, get_sentiment_summary,
-            get_complaint_themes, get_narrative_stats, get_monthly_word_trends, get_trending_words)
-        text = {
-            'words': get_top_words(company=company or None),
-            'sentiment': get_sentiment_summary(company=company or None),
-            'themes': get_complaint_themes(company=company or None),
-            'narrative_stats': get_narrative_stats(company=company or None),
-            'word_trends': get_monthly_word_trends(company=company or None),
-            'trending': get_trending_words(company=company or None),
-        }
-
-        # Data sources
-        mv_count = MonthlyVolume.query.count()
-        complaint_count = Complaint.query.count()
-        company_count = db.session.query(Complaint.company).distinct().count()
-        date_range = db.session.query(
-            db.func.min(Complaint.date_received),
-            db.func.max(Complaint.date_received)
-        ).first()
-        data_sources = {
-            'cfpb': {
-                'status': 'active', 'complaints': complaint_count,
-                'companies': company_count, 'monthly_volumes': mv_count,
-                'date_range': [str(date_range[0]) if date_range[0] else None,
-                               str(date_range[1]) if date_range[1] else None],
-                'fields': ['date_received','product','sub_product','issue','sub_issue','narrative',
-                           'company_public_response','company','state','zip_code','tags',
-                           'consumer_consent','submitted_via','date_sent_to_company',
-                           'company_response','timely_response','consumer_disputed'],
-            },
-            'fdic': {'status': 'active', 'description': 'Bank financials, assets, deposits, ROA/ROE via live API'},
-            'sec_edgar': {'status': 'active', 'description': 'Company filings (10-K, 10-Q, 8-K) via live API'},
-            'finra': {'status': 'limited', 'description': 'Broker disclosures via search API (best effort)'},
-        }
 
         result = {
             'kpis': kpis, 'health': health, 'mom': mom,
@@ -1119,8 +1000,6 @@ def create_app():
             'peer': peer,
             'peer_yoy': peer_yoy, 'drivers': drivers,
             'volume_growth': volume_growth, 'peer_rates': peer_rates,
-            'top5': top5, 'banks': banks, 'text': text,
-            'data_sources': data_sources,
         }
 
         _dashboard_cache[cache_key] = (result, _t.time())
