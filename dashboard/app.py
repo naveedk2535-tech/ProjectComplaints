@@ -651,6 +651,28 @@ def create_app():
         db.session.commit()
         return jsonify({'success': True})
 
+    @app.route('/api/admin/create-indexes', methods=['POST'])
+    @admin_required
+    def admin_create_indexes():
+        """One-time: create missing database indexes for performance."""
+        indexes = [
+            ('ix_complaints_sub_product', 'complaints', 'sub_product'),
+            ('ix_complaints_sub_issue', 'complaints', 'sub_issue'),
+            ('ix_complaints_tags', 'complaints', 'tags'),
+            ('ix_complaints_submitted_via', 'complaints', 'submitted_via'),
+            ('idx_company_product', 'complaints', 'company, product'),
+            ('idx_company_response', 'complaints', 'company, company_response'),
+        ]
+        created = []
+        for name, table, cols in indexes:
+            try:
+                db.session.execute(db.text(f'CREATE INDEX IF NOT EXISTS {name} ON {table} ({cols})'))
+                created.append(name)
+            except Exception as e:
+                created.append(f'{name}: {str(e)}')
+        db.session.commit()
+        return jsonify({'created': created})
+
     # ── Monthly Volume (actual CFPB totals) ─────────────────────
     @app.route('/api/monthly-volume')
     @login_required
