@@ -86,6 +86,16 @@ def _base_query(company=None):
     return q
 
 
+def _sampled_narratives(company=None):
+    """Get narratives, sampled to 2000 most recent for industry mode. Cached 5 min."""
+    def _fetch():
+        q = _base_query(company).with_entities(Complaint.narrative)
+        if not company:
+            q = q.order_by(Complaint.date_received.desc()).limit(2000)
+        return q.all()
+    return _cached(f'narratives_{company}', _fetch)
+
+
 def _tokenize(text):
     """Lowercase and extract alpha-only tokens, filtering stop words."""
     tokens = _TOKEN_RE.findall(text.lower())
@@ -97,9 +107,9 @@ def _tokenize(text):
 # ---------------------------------------------------------------------------
 
 def _build_word_counter(company=None):
-    """Build a word counter from all narratives (cached)."""
+    """Build a word counter from narratives (sampled for industry mode)."""
     def _compute():
-        rows = _base_query(company).with_entities(Complaint.narrative).all()
+        rows = _sampled_narratives(company)
         counter = Counter()
         for (narrative,) in rows:
             counter.update(_tokenize(narrative))
@@ -159,7 +169,7 @@ def get_sentiment_summary(company=None):
 
 
 def _compute_sentiment(company=None):
-    rows = _base_query(company).with_entities(Complaint.narrative).all()
+    rows = _sampled_narratives(company)
 
     positive_counter = Counter()
     negative_counter = Counter()
@@ -227,7 +237,7 @@ def get_complaint_themes(company=None, limit=10):
 
 
 def _compute_themes(company=None, limit=10):
-    rows = _base_query(company).with_entities(Complaint.narrative).all()
+    rows = _sampled_narratives(company)
     total_narratives = len(rows)
     if total_narratives == 0:
         return []
@@ -275,7 +285,7 @@ def get_narrative_stats(company=None):
     Returns a dict with total_with_narrative, avg_length, longest,
     shortest, and median_length.
     """
-    rows = _base_query(company).with_entities(Complaint.narrative).all()
+    rows = _sampled_narratives(company)
 
     if not rows:
         return {
@@ -297,6 +307,36 @@ def get_narrative_stats(company=None):
     }
 
 
+def _get_monthly_word_data(company=None, months=6):
+    """Shared helper: fetch narratives by month, tokenize, and cache.
+    Returns (sorted_months, month_counters) where month_counters = {month: Counter}.
+    Used by both get_monthly_word_trends and get_trending_words."""
+    def _compute():
+        q = _base_query(company).with_entities(
+            Complaint.date_received, Complaint.narrative
+        ).filter(Complaint.date_received.isnot(None))
+        # Sample for industry mode (limit to 2000 most recent)
+        if not company:
+            q = q.order_by(Complaint.date_received.desc()).limit(2000)
+        rows = q.all()
+        if not rows:
+            return [], {}
+        month_narratives = {}
+        for date_received, narrative in rows:
+            month_key = date_received.strftime("%Y-%m")
+            month_narratives.setdefault(month_key, []).append(narrative)
+        sorted_months = sorted(month_narratives.keys(), reverse=True)[:months]
+        sorted_months.sort()
+        month_counters = {}
+        for month_key in sorted_months:
+            counter = Counter()
+            for narrative in month_narratives[month_key]:
+                counter.update(_tokenize(narrative))
+            month_counters[month_key] = counter
+        return sorted_months, month_counters
+    return _cached(f'monthly_word_data_{company}_{months}', _compute)
+
+
 def get_monthly_word_trends(company=None, words=None, months=6):
     """
     Track specific words month over month in complaint narratives.
@@ -305,53 +345,24 @@ def get_monthly_word_trends(company=None, words=None, months=6):
     Returns a list of dicts:
     [{"word": str, "months": [{"month": "YYYY-MM", "count": int}, ...]}, ...]
     """
-    rows = (
-        _base_query(company)
-        .with_entities(Complaint.date_received, Complaint.narrative)
-        .filter(Complaint.date_received.isnot(None))
-        .order_by(Complaint.date_received.desc())
-        .all()
-    )
-
-    if not rows:
+    sorted_months, month_counters = _get_monthly_word_data(company, months)
+    if not sorted_months:
         return []
-
-    # Group narratives by month (YYYY-MM)
-    month_narratives = {}
-    for date_received, narrative in rows:
-        month_key = date_received.strftime("%Y-%m")
-        month_narratives.setdefault(month_key, []).append(narrative)
-
-    # Keep only the most recent N months
-    sorted_months = sorted(month_narratives.keys(), reverse=True)[:months]
-    sorted_months.sort()  # chronological order
 
     # Auto-detect top words if none provided
     if words is None:
         overall_counter = Counter()
-        for month_key in sorted_months:
-            for narrative in month_narratives[month_key]:
-                overall_counter.update(_tokenize(narrative))
+        for m in sorted_months:
+            overall_counter += month_counters[m]
         words = [w for w, _ in overall_counter.most_common(8)]
 
     if not words:
         return []
 
-    # Count each target word per month
-    word_set = set(words)
-    month_word_counts = {m: Counter() for m in sorted_months}
-    for month_key in sorted_months:
-        for narrative in month_narratives[month_key]:
-            tokens = _tokenize(narrative)
-            for token in tokens:
-                if token in word_set:
-                    month_word_counts[month_key][token] += 1
-
-    # Build result
     result = []
     for word in words:
         month_data = [
-            {"month": m, "count": month_word_counts[m].get(word, 0)}
+            {"month": m, "count": month_counters[m].get(word, 0)}
             for m in sorted_months
         ]
         result.append({"word": word, "months": month_data})
@@ -412,39 +423,14 @@ def get_trending_words(company=None, months=3):
                       "change_pct": float}, ...],
      "trending_down": [...]}
     """
-    rows = (
-        _base_query(company)
-        .with_entities(Complaint.date_received, Complaint.narrative)
-        .filter(Complaint.date_received.isnot(None))
-        .order_by(Complaint.date_received.desc())
-        .all()
-    )
+    # Reuse the same cached monthly word data (avoids duplicate DB fetch + tokenization)
+    sorted_months, month_counters = _get_monthly_word_data(company, months)
 
-    if not rows:
-        return {"trending_up": [], "trending_down": []}
-
-    # Group narratives by month
-    month_narratives = {}
-    for date_received, narrative in rows:
-        month_key = date_received.strftime("%Y-%m")
-        month_narratives.setdefault(month_key, []).append(narrative)
-
-    sorted_months = sorted(month_narratives.keys(), reverse=True)[:months]
     if len(sorted_months) < 2:
         return {"trending_up": [], "trending_down": []}
 
-    sorted_months.sort()  # chronological order
     current_month = sorted_months[-1]
     previous_months = sorted_months[:-1]
-
-    # Count words per month
-    month_counters = {}
-    for month_key in sorted_months:
-        counter = Counter()
-        for narrative in month_narratives[month_key]:
-            counter.update(_tokenize(narrative))
-        month_counters[month_key] = counter
-
     current_counter = month_counters[current_month]
 
     # Compute previous-month averages for every word seen in any month

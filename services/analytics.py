@@ -401,17 +401,27 @@ def get_issue_resolution_mix(company=None, limit=15):
 
 
 def get_mom_changes(company=None):
-    """Month-over-month changes using actual CFPB monthly volumes + sampled issue data."""
+    """Month-over-month changes using the last 2 complete months from actual data.
+    The latest month in the DB is always partial so we skip it."""
     from models.database import MonthlyVolume
-    today = datetime.utcnow().date()
-    first_of_current = today.replace(day=1)
-    last_month_end = first_of_current - timedelta(days=1)
-    last_month_start = last_month_end.replace(day=1)
-    prev_month_end = last_month_start - timedelta(days=1)
-    prev_month_start = prev_month_end.replace(day=1)
-
-    cur_key = f"{last_month_start.year}-{last_month_start.month:02d}"
-    prev_key = f"{prev_month_start.year}-{prev_month_start.month:02d}"
+    # Get the last 3 distinct months from data, skip the latest (partial)
+    recent_months = db.session.query(MonthlyVolume.month).distinct().order_by(
+        MonthlyVolume.month.desc()).limit(3).all()
+    recent_months = [r[0] for r in recent_months]
+    if len(recent_months) < 3:
+        return {'volume_change_pct': 0, 'monetary_relief_change_pct': 0,
+                'top_growing_issues': [], 'top_declining_issues': []}
+    # Skip index 0 (latest/partial), use index 1 (cur) and index 2 (prev)
+    cur_key = recent_months[1]
+    prev_key = recent_months[2]
+    # Derive date ranges from the month keys
+    cur_year, cur_mo = int(cur_key[:4]), int(cur_key[5:])
+    prev_year, prev_mo = int(prev_key[:4]), int(prev_key[5:])
+    from calendar import monthrange
+    last_month_start = datetime(cur_year, cur_mo, 1).date()
+    last_month_end = datetime(cur_year, cur_mo, monthrange(cur_year, cur_mo)[1]).date()
+    prev_month_start = datetime(prev_year, prev_mo, 1).date()
+    prev_month_end = datetime(prev_year, prev_mo, monthrange(prev_year, prev_mo)[1]).date()
 
     # Use MonthlyVolume for actual CFPB volumes (not sampled)
     cur_vol_q = db.session.query(func.sum(MonthlyVolume.total_complaints)).filter(MonthlyVolume.month == cur_key)
@@ -424,19 +434,21 @@ def get_mom_changes(company=None):
 
     volume_change_pct = round((current_total - prev_total) / prev_total * 100, 1) if prev_total else 0
 
-    # Monetary relief from sampled data (MonthlyVolume doesn't have response breakdown)
-    def _query_month(start, end):
-        q = Complaint.query.filter(Complaint.date_received >= start, Complaint.date_received <= end)
-        if company:
-            q = q.filter(Complaint.company == company)
-        return q
-
-    cur_sample = _query_month(last_month_start, last_month_end).count()
-    cur_monetary = _query_month(last_month_start, last_month_end).filter(
-        Complaint.company_response == 'Closed with monetary relief').count()
-    prev_sample = _query_month(prev_month_start, prev_month_end).count()
-    prev_monetary = _query_month(prev_month_start, prev_month_end).filter(
-        Complaint.company_response == 'Closed with monetary relief').count()
+    # Monetary relief — single query with CASE for both months (instead of 4 queries)
+    mr_q = db.session.query(
+        case((Complaint.date_received >= last_month_start, 'cur'), else_='prev').label('period'),
+        func.count().label('total'),
+        func.sum(case((Complaint.company_response == 'Closed with monetary relief', 1), else_=0)).label('monetary'),
+    ).filter(
+        Complaint.date_received >= prev_month_start,
+        Complaint.date_received <= last_month_end,
+    )
+    if company:
+        mr_q = mr_q.filter(Complaint.company == company)
+    mr_q = mr_q.group_by('period')
+    mr_map = {r[0]: (r[1], r[2] or 0) for r in mr_q.all()}
+    cur_sample, cur_monetary = mr_map.get('cur', (0, 0))
+    prev_sample, prev_monetary = mr_map.get('prev', (0, 0))
     current_mr_rate = round(cur_monetary / cur_sample * 100, 1) if cur_sample else 0
     prev_mr_rate = round(prev_monetary / prev_sample * 100, 1) if prev_sample else 0
     monetary_relief_change_pct = round(current_mr_rate - prev_mr_rate, 1)
@@ -606,12 +618,20 @@ def get_peer_comparison(company, peers):
 
 
 def _last_complete_month():
-    """Return the last fully-completed month key (e.g. '2026-02' if today is March 2026).
-    Current month data is always partial and should be excluded from analysis."""
-    today = datetime.utcnow().date()
-    first_of_current = today.replace(day=1)
-    last_complete = first_of_current - timedelta(days=1)
-    return f'{last_complete.year}-{last_complete.month:02d}'
+    """Return the second-to-last month in MonthlyVolume data.
+    The latest month is always partial until the next data refresh."""
+    from models.database import MonthlyVolume
+    max_month = db.session.query(func.max(MonthlyVolume.month)).scalar()
+    if not max_month:
+        today = datetime.utcnow().date()
+        first_of_current = today.replace(day=1)
+        last_complete = first_of_current - timedelta(days=1)
+        return f'{last_complete.year}-{last_complete.month:02d}'
+    # Return the month BEFORE the max month
+    year, mo = int(max_month[:4]), int(max_month[5:])
+    if mo == 1:
+        return f'{year - 1}-12'
+    return f'{year}-{mo - 1:02d}'
 
 
 _peer_list_cache = {}
@@ -759,23 +779,13 @@ def get_volume_growth_trend(company=None, months=24):
         vol_q = vol_q.filter(MonthlyVolume.company == company)
     vol_q = vol_q.filter(MonthlyVolume.month <= max_month)
     vol_q = vol_q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
-    all_vols = {r.month: r.total for r in vol_q.all()}
+    full_vols = {r.month: r.total for r in vol_q.all()}
+    all_vols = full_vols  # Same data — reuse instead of duplicate query
 
     # Get the last N months
     sorted_months = sorted(all_vols.keys())
     if months and len(sorted_months) > months:
         sorted_months = sorted_months[-months:]
-
-    # Also fetch ALL months (not just window) for prior-year lookups
-    all_q = db.session.query(
-        MonthlyVolume.month,
-        func.sum(MonthlyVolume.total_complaints).label('total')
-    )
-    if company:
-        all_q = all_q.filter(MonthlyVolume.company == company)
-    all_q = all_q.filter(MonthlyVolume.month <= max_month)
-    all_q = all_q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
-    full_vols = {r.month: r.total for r in all_q.all()}
 
     results = []
     for m in sorted_months:

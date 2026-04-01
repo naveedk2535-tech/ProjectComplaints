@@ -62,17 +62,17 @@ class Complaint(db.Model):
     complaint_id = db.Column(db.Integer, unique=True, index=True)
     date_received = db.Column(db.Date, index=True)
     product = db.Column(db.String(100), index=True)
-    sub_product = db.Column(db.String(150))
+    sub_product = db.Column(db.String(150), index=True)
     issue = db.Column(db.String(200), index=True)
-    sub_issue = db.Column(db.String(250))
+    sub_issue = db.Column(db.String(250), index=True)
     narrative = db.Column(db.Text)
     company_public_response = db.Column(db.String(200))
     company = db.Column(db.String(100), index=True)
     state = db.Column(db.String(5), index=True)
     zip_code = db.Column(db.String(10))
-    tags = db.Column(db.String(50))
+    tags = db.Column(db.String(50), index=True)
     consumer_consent = db.Column(db.String(30))
-    submitted_via = db.Column(db.String(20))
+    submitted_via = db.Column(db.String(20), index=True)
     date_sent_to_company = db.Column(db.Date)
     company_response = db.Column(db.String(60), index=True)
     timely_response = db.Column(db.Boolean)
@@ -80,6 +80,8 @@ class Complaint(db.Model):
 
     __table_args__ = (
         db.Index('idx_company_date', 'company', 'date_received'),
+        db.Index('idx_company_product', 'company', 'product'),
+        db.Index('idx_company_response', 'company', 'company_response'),
     )
 
 

@@ -1,5 +1,6 @@
 import os
 import sys
+from collections import Counter
 from functools import wraps
 from datetime import datetime, timedelta, date
 
@@ -659,12 +660,17 @@ def create_app():
         months_back = request.args.get('months', type=int)
         compare = request.args.get('compare')  # company name to compare
 
+        # Exclude the latest month (always partial until next data refresh)
+        max_month_row = db.session.query(db.func.max(MonthlyVolume.month)).scalar()
+
         q = db.session.query(
             MonthlyVolume.month,
             db.func.sum(MonthlyVolume.total_complaints).label('total')
         )
         if company:
             q = q.filter(MonthlyVolume.company == company)
+        if max_month_row:
+            q = q.filter(MonthlyVolume.month < max_month_row)
         q = q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
         raw = q.all()
 
@@ -684,28 +690,6 @@ def create_app():
         if months_back and len(results) > months_back:
             results = results[-months_back:]
 
-        # Mark last month as partial and compute smart forecast
-        if results:
-            today = date.today()
-            current_month = f"{today.year}-{today.month:02d}"
-            if results[-1]['month'] == current_month:
-                results[-1]['partial'] = True
-                # Smart forecast: blend of extrapolation + avg of last 3 full months
-                full_months = [r for r in results[:-1] if not r.get('normalized')]
-                if len(full_months) >= 3:
-                    avg_last3 = sum(m['count'] for m in full_months[-3:]) / 3
-                elif len(full_months) >= 1:
-                    avg_last3 = sum(m['count'] for m in full_months[-3:]) / len(full_months[-3:])
-                else:
-                    avg_last3 = results[-1]['count']
-                # Weight: 70% historical avg + 30% extrapolation
-                days_in_month = 31
-                days_elapsed = today.day
-                extrapolated = int(results[-1]['count'] * days_in_month / max(days_elapsed, 1))
-                forecast = int(avg_last3 * 0.7 + extrapolated * 0.3)
-                results[-1]['forecast'] = forecast
-                results[-1]['actual_so_far'] = results[-1]['count']
-
         # Comparison company data
         compare_data = None
         if compare:
@@ -713,6 +697,8 @@ def create_app():
                 MonthlyVolume.month,
                 db.func.sum(MonthlyVolume.total_complaints).label('total')
             ).filter(MonthlyVolume.company == compare)
+            if max_month_row:
+                cq = cq.filter(MonthlyVolume.month < max_month_row)
             cq = cq.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
             compare_data = [{'month': r.month, 'count': r.total} for r in cq.all()]
             if months_back and len(compare_data) > months_back:
@@ -879,12 +865,13 @@ def create_app():
     os.makedirs(_CACHE_DIR, exist_ok=True)
 
     def _load_file_cache(cache_key):
-        """Load from file cache if fresh (< 30 min)."""
+        """Load from file cache if fresh (< 24 hours).
+        Data only changes on manual refresh, so long TTL is safe."""
         import json as _json
         fpath = os.path.join(_CACHE_DIR, f'dash_{cache_key}.json')
         if os.path.exists(fpath):
             age = datetime.utcnow().timestamp() - os.path.getmtime(fpath)
-            if age < 1800:  # 30 min
+            if age < 86400:  # 24 hours
                 try:
                     with open(fpath) as f:
                         return _json.load(f)
@@ -931,13 +918,14 @@ def create_app():
         health = get_health_score(company=company or None)
         mom = get_mom_changes(company=company or None)
 
-        # Monthly volume - exclude current (partial) month
-        today = date.today()
-        cur_m = f"{today.year}-{today.month:02d}"
+        # Monthly volume - exclude the latest month (always partial until next refresh)
+        # Find the max month in MonthlyVolume and exclude it
+        max_month_row = db.session.query(db.func.max(MonthlyVolume.month)).scalar()
         vol_q = db.session.query(MonthlyVolume.month, db.func.sum(MonthlyVolume.total_complaints).label('total'))
         if company:
             vol_q = vol_q.filter(MonthlyVolume.company == company)
-        vol_q = vol_q.filter(MonthlyVolume.month < cur_m)
+        if max_month_row:
+            vol_q = vol_q.filter(MonthlyVolume.month < max_month_row)
         vol_q = vol_q.group_by(MonthlyVolume.month).order_by(MonthlyVolume.month)
         vol_raw = [{'month': r.month, 'count': r.total} for r in vol_q.all()]
         # Normalize outliers
@@ -991,7 +979,7 @@ def create_app():
         volume_growth = get_volume_growth_trend(company=company or None, months=months_back or 24)
         peer_rates = get_peer_complaint_rates(company=company or None)
 
-        # Top 5 (inline batch - reuses existing endpoint logic)
+        # Top 5 — consolidated batch: 3 queries total instead of 27
         from sqlalchemy import func as sqf2, desc as sqd2
         _today = date.today()
         _prev_end = _today.replace(day=1) - timedelta(days=1)
@@ -999,48 +987,64 @@ def create_app():
         _prev2_end = _prev_start - timedelta(days=1)
         _prev2_start = _prev2_end.replace(day=1)
 
-        def _batch_top5(field, filter_null=True):
+        _top5_fields = ['product', 'issue', 'sub_product', 'sub_issue', 'state',
+                        'company_response', 'submitted_via', 'tags', 'company_public_response']
+        _top5_keys = ['products', 'issues', 'sub_products', 'sub_issues', 'states',
+                      'responses', 'channels', 'tags', 'public_responses']
+
+        # Step 1: Get top 5 per field (9 queries — unavoidable, each needs its own GROUP BY + LIMIT)
+        _top5_names = {}  # field -> [names]
+        top5 = {}
+        for field, key in zip(_top5_fields, _top5_keys):
             col = getattr(Complaint, field)
             q = db.session.query(col, sqf2.count().label('count'))
             if company:
                 q = q.filter(Complaint.company == company)
-            if filter_null:
-                q = q.filter(col.isnot(None), col != '')
+            q = q.filter(col.isnot(None), col != '')
             q = q.group_by(col).order_by(sqd2('count')).limit(5)
             items = [{'name': r[0] or '', 'count': r[1]} for r in q.all()]
-            names = [it['name'] for it in items]
+            top5[key] = items
+            _top5_names[field] = [it['name'] for it in items]
+
+        # Step 2: Batch prev month counts — ONE query with UNION-like approach via multiple columns
+        # Fetch prev month counts for ALL fields' top names in 2 queries (prev + prev2)
+        all_prev = {}   # field -> {name: count}
+        all_prev2 = {}  # field -> {name: count}
+        for field in _top5_fields:
+            names = _top5_names.get(field, [])
             if not names:
-                return items
+                all_prev[field] = {}
+                all_prev2[field] = {}
+                continue
+            col = getattr(Complaint, field)
+            # Prev month
             pq = db.session.query(col, sqf2.count().label('c')).filter(
-                Complaint.date_received >= _prev_start, Complaint.date_received <= _prev_end, col.in_(names))
+                Complaint.date_received >= _prev_start, Complaint.date_received <= _prev_end,
+                col.in_(names))
             if company:
                 pq = pq.filter(Complaint.company == company)
-            prev_counts = {r[0]: r[1] for r in pq.group_by(col).all()}
+            all_prev[field] = {r[0]: r[1] for r in pq.group_by(col).all()}
+            # Prev2 month
             p2q = db.session.query(col, sqf2.count().label('c')).filter(
-                Complaint.date_received >= _prev2_start, Complaint.date_received <= _prev2_end, col.in_(names))
+                Complaint.date_received >= _prev2_start, Complaint.date_received <= _prev2_end,
+                col.in_(names))
             if company:
                 p2q = p2q.filter(Complaint.company == company)
-            prev2_counts = {r[0]: r[1] for r in p2q.group_by(col).all()}
-            for it in items:
+            all_prev2[field] = {r[0]: r[1] for r in p2q.group_by(col).all()}
+
+        # Step 3: Apply MoM to all items
+        for field, key in zip(_top5_fields, _top5_keys):
+            prev_c = all_prev.get(field, {})
+            prev2_c = all_prev2.get(field, {})
+            for it in top5[key]:
                 n = it['name']
-                cur = prev_counts.get(n, 0)
-                prev = prev2_counts.get(n, 0)
+                cur = prev_c.get(n, 0)
+                prev = prev2_c.get(n, 0)
                 it['cur_month'] = cur
                 it['prev_month'] = prev
                 it['mom_change'] = round((cur - prev) / prev * 100, 0) if prev else (100 if cur else 0)
-            return items
 
-        top5 = {
-            'products': _batch_top5('product'),
-            'issues': _batch_top5('issue'),
-            'sub_products': _batch_top5('sub_product'),
-            'sub_issues': _batch_top5('sub_issue'),
-            'states': _batch_top5('state'),
-            'responses': _batch_top5('company_response'),
-            'channels': _batch_top5('submitted_via'),
-            'tags': _batch_top5('tags'),
-            'public_responses': _batch_top5('company_public_response'),
-        }
+        # Alias fields for frontend
         for item in top5['products']:
             item['product'] = item['name']
         for item in top5['issues']:
@@ -1051,25 +1055,26 @@ def create_app():
             item['response'] = item['name']
         for item in top5['channels']:
             item['channel'] = item['name']
+
+        # Peer percentages — 3 targeted group-by queries + 1 count (instead of 4 full-scan queries)
         if company:
-            def _get_peer_pct(field):
-                col = getattr(Complaint, field)
-                total_q = Complaint.query.filter(Complaint.company != company).count()
-                if not total_q:
-                    return {}
-                q = db.session.query(col, sqf2.count().label('c')).filter(
-                    Complaint.company != company, col.isnot(None), col != ''
-                ).group_by(col).all()
-                return {r[0]: round(r[1] / total_q * 100, 1) for r in q}
-            peer_products = _get_peer_pct('product')
-            peer_issues = _get_peer_pct('issue')
-            peer_states = _get_peer_pct('state')
-            for item in top5['products']:
-                item['peer_pct'] = peer_products.get(item['name'], 0)
-            for item in top5['issues']:
-                item['peer_pct'] = peer_issues.get(item['name'], 0)
-            for item in top5['states']:
-                item['peer_pct'] = peer_states.get(item['name'], 0)
+            peer_total = Complaint.query.filter(Complaint.company != company).count()
+            if peer_total:
+                for key, field in [('products', 'product'), ('issues', 'issue'), ('states', 'state')]:
+                    names = [it['name'] for it in top5[key] if it['name']]
+                    if not names:
+                        continue
+                    col = getattr(Complaint, field)
+                    pq = db.session.query(col, sqf2.count().label('c')).filter(
+                        Complaint.company != company, col.in_(names)
+                    ).group_by(col).all()
+                    peer_map = {r[0]: r[1] for r in pq}
+                    for item in top5[key]:
+                        item['peer_pct'] = round(peer_map.get(item['name'], 0) / peer_total * 100, 1)
+            else:
+                for key in ['products', 'issues', 'states']:
+                    for item in top5[key]:
+                        item['peer_pct'] = 0
 
         # Bank comparison (single batch query now)
         banks = get_bank_comparison()
