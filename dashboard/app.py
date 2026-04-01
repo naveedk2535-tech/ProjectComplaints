@@ -754,8 +754,9 @@ def create_app():
         comp = request.args.get('company', '')
         t0 = _t.time()
         try:
-            with app.test_request_context(
-                f'/api/dashboard-data?months=12' + (f'&company={comp}' if comp else '')):
+            from urllib.parse import urlencode
+            qs = urlencode({'months': 12, 'company': comp}) if comp else 'months=12'
+            with app.test_request_context(f'/api/dashboard-data?{qs}'):
                 session['user_id'] = User.query.filter_by(role='admin').first().id
                 session.permanent = True
                 api_dashboard_data()
