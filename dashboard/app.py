@@ -556,6 +556,62 @@ def create_app():
         result = refresh_data(company=company)
         return jsonify(result)
 
+    @app.route('/api/admin/refresh-volumes', methods=['POST'])
+    @admin_required
+    def admin_refresh_volumes():
+        """Refresh MonthlyVolume data from CFPB API for one company.
+        Call with ?company=NAME. Fetches any months missing or needing update."""
+        import requests as _req
+        from models.database import MonthlyVolume
+        from datetime import timedelta as _td
+
+        company = request.args.get('company', '')
+        if not company:
+            return jsonify({'error': 'company required'}), 400
+
+        CFPB_API = "https://www.consumerfinance.gov/data-research/consumer-complaints/search/api/v1/"
+        today = date.today()
+        start = date(2023, 4, 1)
+        updated = 0
+
+        current = start
+        while current <= today:
+            y, m = current.year, current.month
+            month_key = f"{y}-{m:02d}"
+
+            # Skip if already have this month (unless it's recent — re-check last 2 months)
+            existing = MonthlyVolume.query.filter_by(company=company, month=month_key).first()
+            month_end = date(y + (1 if m == 12 else 0), (m % 12) + 1, 1) - _td(days=1)
+            is_recent = (today - month_end).days < 60
+
+            if existing and existing.total_complaints > 0 and not is_recent:
+                current = date(y + (1 if m == 12 else 0), (m % 12) + 1, 1)
+                continue
+
+            try:
+                r = _req.get(CFPB_API, params={
+                    'company': company, 'size': 0, 'no_aggs': 'true',
+                    'date_received_min': date(y, m, 1).isoformat(),
+                    'date_received_max': month_end.isoformat(),
+                }, timeout=15)
+                r.raise_for_status()
+                total = r.json().get('hits', {}).get('total', {}).get('value', 0)
+            except Exception:
+                total = 0
+
+            if total > 0:
+                if existing:
+                    existing.total_complaints = total
+                    existing.last_updated = datetime.utcnow()
+                else:
+                    db.session.add(MonthlyVolume(company=company, month=month_key, total_complaints=total))
+                updated += 1
+
+            current = date(y + (1 if m == 12 else 0), (m % 12) + 1, 1)
+
+        db.session.commit()
+        return jsonify({'company': company, 'months_updated': updated})
+
     @app.route('/api/admin/decompress-db', methods=['POST'])
     @admin_required
     def admin_decompress_db():

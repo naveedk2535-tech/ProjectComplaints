@@ -6,16 +6,24 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 style="font-weight: 800;"><i class="fas fa-shield-alt me-2"></i>Admin Panel</h2>
         <div class="d-flex gap-2">
-            <button class="btn btn-cw" onclick="refreshCFPB()">
-                <i class="fas fa-sync me-2"></i>Refresh CFPB Data
-            </button>
-            <button class="btn btn-cw" id="warmBtn" onclick="warmCaches()">
-                <i class="fas fa-bolt me-2"></i>Warm Dashboard Caches
+            <button class="btn btn-cw" id="dailyRefreshBtn" onclick="dailyRefresh()">
+                <i class="fas fa-rocket me-2"></i>Daily Refresh
             </button>
             <button class="btn btn-cw-outline" onclick="decompressDB()" id="decompressBtn" style="display:none;">
                 <i class="fas fa-database me-2"></i>Decompress DB
             </button>
         </div>
+    </div>
+
+    <!-- Daily Refresh Progress Panel -->
+    <div id="refresh-panel" class="card-cw p-3 mb-4" style="display:none;">
+        <h6 style="font-weight:700;margin-bottom:8px;"><i class="fas fa-tasks me-2"></i>Daily Refresh Progress</h6>
+        <div id="refresh-steps" style="font-size:0.82rem;"></div>
+        <div class="mt-2" style="background:var(--bg-input);border-radius:8px;height:8px;overflow:hidden;">
+            <div id="refresh-bar" style="height:100%;background:var(--accent-indigo);width:0%;transition:width 0.3s;border-radius:8px;"></div>
+        </div>
+        <div id="refresh-status" class="mt-2" style="font-size:0.78rem;color:var(--text-muted);"></div>
+    </div>
     </div>
 
     <!-- Admin KPIs -->
@@ -220,60 +228,110 @@ async function saveUser() {
     }
 }
 
-async function warmCaches() {
-    const btn = document.getElementById('warmBtn');
+// ── Daily Refresh: full pipeline ──────────────────────────────
+// Step 1: Refresh CFPB complaint data
+// Step 2: Update monthly volumes for all companies
+// Step 3: Clear + rebuild all dashboard caches
+async function dailyRefresh() {
+    const btn = document.getElementById('dailyRefreshBtn');
+    const panel = document.getElementById('refresh-panel');
+    const steps = document.getElementById('refresh-steps');
+    const bar = document.getElementById('refresh-bar');
+    const status = document.getElementById('refresh-status');
+
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-cw me-2"></span>Clearing caches...';
-    showStatus('Clearing old caches...', 'info');
+    btn.innerHTML = '<span class="spinner-cw me-2"></span>Running...';
+    panel.style.display = 'block';
+    const startTime = Date.now();
+
+    function updateStep(html) { steps.innerHTML = html; }
+    function updateBar(pct) { bar.style.width = pct + '%'; }
+    function updateStatus(text) { status.textContent = text; }
+    function elapsed() { return ((Date.now() - startTime) / 1000).toFixed(0) + 's'; }
+
+    let stepHtml = '';
+    function addStep(icon, color, text) {
+        stepHtml += `<div class="d-flex align-items-center gap-2 mb-1"><i class="fas fa-${icon}" style="color:var(--accent-${color});width:16px;"></i><span>${text}</span></div>`;
+        updateStep(stepHtml);
+    }
 
     try {
-        // Step 1: Clear caches and get company list
-        const clearResp = await fetch('/api/admin/warm-caches?clear=1', { method: 'POST' });
-        const clearData = await clearResp.json();
-        const companies = clearData.companies; // [null, "COMPANY1", "COMPANY2", ...]
+        // ── STEP 1: Refresh CFPB complaints ──
+        addStep('spinner fa-spin', 'indigo', 'Fetching new complaints from CFPB...');
+        updateBar(5);
+        const cfpbResp = await fetch('/api/cfpb/refresh', {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
+        });
+        const cfpb = await cfpbResp.json();
+        stepHtml = stepHtml.replace('fa-spinner fa-spin', 'fa-check').replace('Fetching new', 'Fetched');
+        addStep('check', 'green', `CFPB: +${cfpb.added} new complaints (${cfpb.total_in_db.toLocaleString()} total)`);
+        updateBar(15);
 
-        let warmed = 0, totalMs = 0;
-        // Step 2: Warm each company one at a time
-        for (const comp of companies) {
-            const label = comp || 'Industry';
-            btn.innerHTML = `<span class="spinner-cw me-2"></span>${warmed+1}/${companies.length}: ${label.substring(0,20)}...`;
-            showStatus(`Warming ${warmed+1}/${companies.length}: ${label}...`, 'info');
+        // ── STEP 2: Update monthly volumes ──
+        addStep('spinner fa-spin', 'indigo', 'Updating monthly volumes...');
+        updateBar(18);
 
-            const url = '/api/admin/warm-caches' + (comp ? '?company=' + encodeURIComponent(comp) : '');
-            const resp = await fetch(url, { method: 'POST' });
-            const data = await resp.json();
-            if (data.status === 'ok') warmed++;
-            totalMs += data.ms || 0;
+        // Get company list
+        const compResp = await fetch('/api/companies');
+        const companies = await compResp.json();
+        let volUpdated = 0;
+
+        for (let i = 0; i < companies.length; i++) {
+            const comp = companies[i].company;
+            updateStatus(`Volumes: ${i+1}/${companies.length} — ${comp.substring(0,30)}... (${elapsed()})`);
+            updateBar(18 + Math.round((i / companies.length) * 32));
+            try {
+                const vr = await fetch('/api/admin/refresh-volumes?company=' + encodeURIComponent(comp), { method: 'POST' });
+                const vd = await vr.json();
+                volUpdated += vd.months_updated || 0;
+            } catch(e) {}
         }
 
+        stepHtml = stepHtml.replace(/Updating monthly volumes\.\.\.<\/span><\/div>$/, `Monthly volumes updated (${volUpdated} months refreshed)</span></div>`);
+        stepHtml = stepHtml.replace('fa-spinner fa-spin', 'fa-check');
+        updateStep(stepHtml);
+        updateBar(50);
+
+        // ── STEP 3: Clear and warm all caches ──
+        addStep('spinner fa-spin', 'indigo', 'Rebuilding dashboard caches...');
+        updateBar(52);
+
+        const clearResp = await fetch('/api/admin/warm-caches?clear=1', { method: 'POST' });
+        const clearData = await clearResp.json();
+        const targets = clearData.companies;
+        let warmed = 0;
+
+        for (let i = 0; i < targets.length; i++) {
+            const comp = targets[i];
+            const label = comp || 'Industry';
+            updateStatus(`Caching: ${i+1}/${targets.length} — ${label.substring(0,30)}... (${elapsed()})`);
+            updateBar(52 + Math.round((i / targets.length) * 46));
+            const url = '/api/admin/warm-caches' + (comp ? '?company=' + encodeURIComponent(comp) : '');
+            try {
+                const wr = await fetch(url, { method: 'POST' });
+                const wd = await wr.json();
+                if (wd.status === 'ok') warmed++;
+            } catch(e) {}
+        }
+
+        stepHtml = stepHtml.replace(/Rebuilding dashboard caches\.\.\.<\/span><\/div>$/, `Dashboard caches rebuilt (${warmed}/${targets.length} companies)</span></div>`);
+        stepHtml = stepHtml.replace('fa-spinner fa-spin', 'fa-check');
+        updateStep(stepHtml);
+        updateBar(100);
+
+        // ── DONE ──
+        addStep('rocket', 'green', `All done in ${elapsed()}! Dashboard is now blazing fast for all users.`);
+        updateStatus('Next refresh recommended: tomorrow');
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-bolt me-2"></i>Warm Dashboard Caches';
-        showStatus(`Done! Warmed ${warmed}/${companies.length} caches in ${(totalMs/1000).toFixed(0)}s. All dropdown switches are now instant.`, 'success');
+        btn.innerHTML = '<i class="fas fa-rocket me-2"></i>Daily Refresh';
+        showStatus(`Daily refresh complete! ${cfpb.added} new complaints, ${volUpdated} volume updates, ${warmed} caches warmed.`, 'success');
+
     } catch (err) {
+        addStep('exclamation-triangle', 'red', 'Error: ' + err.message);
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-bolt me-2"></i>Warm Dashboard Caches';
-        showStatus('Cache warming failed: ' + err.message, 'error');
+        btn.innerHTML = '<i class="fas fa-rocket me-2"></i>Daily Refresh';
+        showStatus('Refresh failed: ' + err.message, 'error');
     }
-}
-
-function refreshCFPB() {
-    const btn = event.target.closest('button');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-cw me-2"></span>Refreshing...';
-    showStatus('Fetching new complaints from CFPB API...', 'info');
-
-    fetch('/api/cfpb/refresh', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' })
-    .then(r => r.json())
-    .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-sync me-2"></i>Refresh CFPB Data';
-        showStatus(`Done! Added ${data.added} new complaints. Total: ${data.total_in_db}`, 'success');
-    })
-    .catch(err => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-sync me-2"></i>Refresh CFPB Data';
-        showStatus('Error: ' + err.message, 'error');
-    });
 }
 
 function decompressDB() {
