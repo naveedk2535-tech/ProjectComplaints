@@ -9,6 +9,9 @@
             <button class="btn btn-cw" onclick="refreshCFPB()">
                 <i class="fas fa-sync me-2"></i>Refresh CFPB Data
             </button>
+            <button class="btn btn-cw" id="warmBtn" onclick="warmCaches()">
+                <i class="fas fa-bolt me-2"></i>Warm Dashboard Caches
+            </button>
             <button class="btn btn-cw-outline" onclick="decompressDB()" id="decompressBtn" style="display:none;">
                 <i class="fas fa-database me-2"></i>Decompress DB
             </button>
@@ -215,6 +218,26 @@ async function saveUser() {
         closeModal();
         location.reload();
     }
+}
+
+function warmCaches() {
+    const btn = document.getElementById('warmBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-cw me-2"></span>Warming (2-3 min)...';
+    showStatus('Pre-computing dashboard caches for all companies. This takes 2-3 minutes...', 'info');
+
+    fetch('/api/admin/warm-caches', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-bolt me-2"></i>Warm Dashboard Caches';
+        showStatus(`Done! Warmed ${data.warmed} caches in ${data.total_seconds}s. All dropdown switches are now instant.`, 'success');
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-bolt me-2"></i>Warm Dashboard Caches';
+        showStatus('Cache warming failed: ' + err.message, 'error');
+    });
 }
 
 function refreshCFPB() {

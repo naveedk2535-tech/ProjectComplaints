@@ -673,6 +673,46 @@ def create_app():
         db.session.commit()
         return jsonify({'created': created})
 
+    @app.route('/api/admin/warm-caches', methods=['POST'])
+    @admin_required
+    def admin_warm_caches():
+        """Pre-compute dashboard caches for all companies.
+        Makes dropdown switching instant instead of 10-16s.
+        Takes 2-3 minutes on PA. Called from admin panel."""
+        import time as _t
+        from services.analytics import get_companies
+
+        # Clear stale file caches
+        for f in os.listdir(_CACHE_DIR):
+            if f.startswith('dash_') and f.endswith('.json'):
+                os.remove(os.path.join(_CACHE_DIR, f))
+        _dashboard_cache.clear()
+
+        companies = get_companies()
+        targets = [None] + [c['company'] for c in companies]
+        results = []
+
+        for comp in targets:
+            t0 = _t.time()
+            try:
+                with app.test_request_context(
+                    f'/api/dashboard-data?months=12' + (f'&company={comp}' if comp else '')):
+                    # Manually set session so login_required passes
+                    session['user_id'] = User.query.filter_by(role='admin').first().id
+                    session.permanent = True
+                    resp = api_dashboard_data()
+                status = 'ok'
+            except Exception as e:
+                status = str(e)[:60]
+            elapsed = round((_t.time() - t0) * 1000)
+            results.append({'company': comp or 'Industry', 'status': status, 'ms': elapsed})
+
+        return jsonify({
+            'warmed': len([r for r in results if r['status'] == 'ok']),
+            'total_seconds': round(sum(r['ms'] for r in results) / 1000, 1),
+            'details': results,
+        })
+
     # ── Monthly Volume (actual CFPB totals) ─────────────────────
     @app.route('/api/monthly-volume')
     @login_required
