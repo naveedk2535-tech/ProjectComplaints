@@ -676,41 +676,42 @@ def create_app():
     @app.route('/api/admin/warm-caches', methods=['POST'])
     @admin_required
     def admin_warm_caches():
-        """Pre-compute dashboard caches for all companies.
-        Makes dropdown switching instant instead of 10-16s.
-        Takes 2-3 minutes on PA. Called from admin panel."""
+        """Pre-compute dashboard caches one company at a time.
+        Call with ?company=NAME to warm one, or ?clear=1 to clear all first.
+        The admin panel JS calls this in a loop for each company."""
         import time as _t
         from services.analytics import get_companies
 
-        # Clear stale file caches
-        for f in os.listdir(_CACHE_DIR):
-            if f.startswith('dash_') and f.endswith('.json'):
-                os.remove(os.path.join(_CACHE_DIR, f))
-        _dashboard_cache.clear()
+        # If clear=1, wipe all caches first
+        if request.args.get('clear'):
+            for f in os.listdir(_CACHE_DIR):
+                if f.startswith('dash_') and f.endswith('.json'):
+                    os.remove(os.path.join(_CACHE_DIR, f))
+            _dashboard_cache.clear()
+            companies = get_companies()
+            return jsonify({
+                'cleared': True,
+                'companies': [None] + [c['company'] for c in companies],
+            })
 
-        companies = get_companies()
-        targets = [None] + [c['company'] for c in companies]
-        results = []
-
-        for comp in targets:
-            t0 = _t.time()
-            try:
-                with app.test_request_context(
-                    f'/api/dashboard-data?months=12' + (f'&company={comp}' if comp else '')):
-                    # Manually set session so login_required passes
-                    session['user_id'] = User.query.filter_by(role='admin').first().id
-                    session.permanent = True
-                    resp = api_dashboard_data()
-                status = 'ok'
-            except Exception as e:
-                status = str(e)[:60]
-            elapsed = round((_t.time() - t0) * 1000)
-            results.append({'company': comp or 'Industry', 'status': status, 'ms': elapsed})
+        # Warm a single company
+        comp = request.args.get('company', '')
+        t0 = _t.time()
+        try:
+            with app.test_request_context(
+                f'/api/dashboard-data?months=12' + (f'&company={comp}' if comp else '')):
+                session['user_id'] = User.query.filter_by(role='admin').first().id
+                session.permanent = True
+                api_dashboard_data()
+            status = 'ok'
+        except Exception as e:
+            status = str(e)[:60]
+        elapsed = round((_t.time() - t0) * 1000)
 
         return jsonify({
-            'warmed': len([r for r in results if r['status'] == 'ok']),
-            'total_seconds': round(sum(r['ms'] for r in results) / 1000, 1),
-            'details': results,
+            'company': comp or 'Industry',
+            'status': status,
+            'ms': elapsed,
         })
 
     # ── Monthly Volume (actual CFPB totals) ─────────────────────

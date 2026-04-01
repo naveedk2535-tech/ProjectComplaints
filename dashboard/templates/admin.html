@@ -220,24 +220,40 @@ async function saveUser() {
     }
 }
 
-function warmCaches() {
+async function warmCaches() {
     const btn = document.getElementById('warmBtn');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-cw me-2"></span>Warming (2-3 min)...';
-    showStatus('Pre-computing dashboard caches for all companies. This takes 2-3 minutes...', 'info');
+    btn.innerHTML = '<span class="spinner-cw me-2"></span>Clearing caches...';
+    showStatus('Clearing old caches...', 'info');
 
-    fetch('/api/admin/warm-caches', { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
+    try {
+        // Step 1: Clear caches and get company list
+        const clearResp = await fetch('/api/admin/warm-caches?clear=1', { method: 'POST' });
+        const clearData = await clearResp.json();
+        const companies = clearData.companies; // [null, "COMPANY1", "COMPANY2", ...]
+
+        let warmed = 0, totalMs = 0;
+        // Step 2: Warm each company one at a time
+        for (const comp of companies) {
+            const label = comp || 'Industry';
+            btn.innerHTML = `<span class="spinner-cw me-2"></span>${warmed+1}/${companies.length}: ${label.substring(0,20)}...`;
+            showStatus(`Warming ${warmed+1}/${companies.length}: ${label}...`, 'info');
+
+            const url = '/api/admin/warm-caches' + (comp ? '?company=' + encodeURIComponent(comp) : '');
+            const resp = await fetch(url, { method: 'POST' });
+            const data = await resp.json();
+            if (data.status === 'ok') warmed++;
+            totalMs += data.ms || 0;
+        }
+
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-bolt me-2"></i>Warm Dashboard Caches';
-        showStatus(`Done! Warmed ${data.warmed} caches in ${data.total_seconds}s. All dropdown switches are now instant.`, 'success');
-    })
-    .catch(err => {
+        showStatus(`Done! Warmed ${warmed}/${companies.length} caches in ${(totalMs/1000).toFixed(0)}s. All dropdown switches are now instant.`, 'success');
+    } catch (err) {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-bolt me-2"></i>Warm Dashboard Caches';
         showStatus('Cache warming failed: ' + err.message, 'error');
-    });
+    }
 }
 
 function refreshCFPB() {
